@@ -1,0 +1,20 @@
+# Core framework
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-CORS==5.0.1
+
+# Database
+SQLAlchemy==2.0.36
+
+# Classical cryptography (RSA-2048, AES-256-GCM)
+cryptography==44.0.0
+
+# Post-quantum cryptography (ML-KEM-768 via liboqs)
+liboqs-python==0.14.1
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+
+# Utilities
+python-dotenv==1.0.1

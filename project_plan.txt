@@ -1,0 +1,419 @@
+Given macOS, RSA + AES, and a Flask/HTML dashboard, here is a concrete, step‑by‑step plan an AI agent can follow to implement your MVP using Python + liboqs. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+***
+
+## 1. Tech choices (fixed for agents)
+
+- OS: macOS (Intel or Apple Silicon).  
+- Python: 3.11 (safely supports Flask, cryptography, and liboqs bindings). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+- Classical algorithms:  
+  - RSA‑2048 for key encapsulation.  
+  - AES‑256‑GCM for bulk encryption. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+- PQC:  
+  - ML‑KEM‑768 (Kyber‑768) for key encapsulation (via liboqs). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+  - AES‑256‑GCM for bulk encryption (same as classical to isolate the KEM difference). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+- Web stack:  
+  - Flask backend with REST JSON APIs.  
+  - Flask + Jinja2 dashboard template + Chart.js from CDN. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+- Database: SQLite (file‑based, simplest for MVP). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+***
+
+## 2. Repository structure
+
+Agents should create this exact structure:
+
+```text
+pqc_api_mvp/
+  backend/
+    app.py
+    config.py
+    crypto/
+      __init__.py
+      classical.py
+      pqc.py
+      keys.py
+    models/
+      __init__.py
+      db.py
+      transaction.py
+    routes/
+      __init__.py
+      transactions.py
+      metrics.py
+    services/
+      __init__.py
+      metrics_service.py
+    templates/
+      dashboard.html
+    static/
+      js/
+        dashboard.js
+    tests/
+      test_crypto_classical.py
+      test_crypto_pqc.py
+    requirements.txt
+  scripts/
+    install_liboqs_mac.sh
+  docker/
+    Dockerfile.backend   (optional for later)
+  docs/
+    MVP-architecture.md
+    API-spec.md
+    Dashboard-spec.md
+```
+
+***
+
+## 3. Environment and liboqs setup on macOS
+
+### 3.1 Install system prereqs
+
+Steps for an agent (or you) on macOS: [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+1) Install Homebrew (if not present).  
+2) Install dependencies:
+
+```bash
+brew install cmake ninja openssl@3 python@3.11
+```
+
+3) Ensure `python3.11` is on PATH (e.g., `brew link python@3.11`).
+
+### 3.2 Install liboqs (scripts/install_liboqs_mac.sh)
+
+Create `scripts/install_liboqs_mac.sh`:
+
+- Pseudo‑steps:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+# Clone liboqs
+git clone --depth 1 https://github.com/open-quantum-safe/liboqs.git
+cd liboqs
+mkdir -p build && cd build
+
+cmake -GNinja \
+  -DCMAKE_INSTALL_PREFIX=/usr/local \
+  -DOQS_USE_OPENSSL=OFF \
+  ..
+
+ninja
+sudo ninja install
+```
+
+Agents run:
+
+```bash
+chmod +x scripts/install_liboqs_mac.sh
+./scripts/install_liboqs_mac.sh
+```
+
+This provides liboqs C library with ML‑KEM support. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+### 3.3 Python venv and requirements
+
+In `backend/requirements.txt`:
+
+- `Flask`  
+- `SQLAlchemy`  
+- `cryptography`  
+- `cffi` (often needed by liboqs Python bindings)  
+- The Python binding to liboqs (you must pick one; common choice is `oqs` or `python-oqs` based on your environment). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+- `pytest`
+
+Because binding package names can differ, an agent should:
+
+1) Try installing `python-oqs` (if available for your environment).  
+2) If not available, fall back to an existing wrapper mentioned in your blueprint (e.g., `quantcrypt` wrapping PQClean, or direct ctypes on liboqs). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+Your documents say there are Python libraries that wrap liboqs/PQClean; the agent must choose a working binding and then code against its API (function names will differ slightly). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+***
+
+## 4. Database and model layer
+
+### 4.1 DB config (`models/db.py`)
+
+- Use SQLAlchemy with SQLite:
+
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+DATABASE_URL = "sqlite:///./transactions.db"
+
+engine = create_engine(DATABASE_URL, echo=False, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+Base = declarative_base()
+```
+
+### 4.2 Transaction model (`models/transaction.py`)
+
+Capture encryption results and metrics, aligned with your SRS transaction audit trail. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+Fields:
+
+- `id` – primary key.  
+- `mode` – `"classical"` or `"pqc"`.  
+- `ciphertext` – BLOB (or TEXT with base64).  
+- `algorithm_info` – JSON string describing algorithm and key sizes.  
+- `created_at` – datetime.  
+- `plaintext_size` – int.  
+- `ciphertext_size` – int.  
+- `latency_ms` – float.
+
+Agents implement the ORM class accordingly.
+
+***
+
+## 5. Crypto modules
+
+### 5.1 Key management (`crypto/keys.py`)
+
+Server‑side keys only, minimal but extendable. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+Responsibilities:
+
+- On startup:  
+  - Check for existing key files:  
+    - `backend/keys/server_rsa_private.pem`  
+    - `backend/keys/server_rsa_public.pem`  
+    - `backend/keys/server_pqc_public.bin`  
+    - `backend/keys/server_pqc_secret.bin`  
+  - If absent, generate them.
+
+Functions:
+
+- `get_rsa_keys() -> (private_key_obj, public_key_obj)`  
+- `get_pqc_keys() -> (public_key_bytes, secret_key_bytes)`  
+
+Private keys may be stored unencrypted for MVP; note in docs that production would use AES‑encrypted at rest or HSM as per your SRS. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+### 5.2 Classical crypto (`crypto/classical.py`)
+
+Use `cryptography` library. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+Functions:
+
+1) `generate_rsa_keypair()` – RSA‑2048 key pair.  
+2) `derive_session_key_rsa()` – simple approach:  
+   - Generate random 32‑byte AES key.  
+   - Encrypt it with RSA public key (PKCS1v1.5 or OAEP for better practice).  
+   - For MVP encryption of transactions we can skip sending encrypted key back; we only need to measure encryption metrics locally.  
+
+3) `encrypt_transaction(plaintext: bytes) -> (ciphertext, iv, tag, metadata)`  
+   - Generate random 32‑byte AES key.  
+   - Generate 12‑byte IV.  
+   - AES‑GCM encrypt.  
+   - Metadata includes:  
+     - `"asym": "RSA-2048"`  
+     - `"sym": "AES-256-GCM"`  
+     - key sizes: 2048 bits, 32 bytes. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+4) `decrypt_transaction(ciphertext, iv, tag, metadata)` – for completeness, even if you don’t show it in demo.
+
+### 5.3 PQC crypto via liboqs (`crypto/pqc.py`)
+
+Following your blueprint: ML‑KEM for key establishment + AES‑GCM for data. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+Assuming Python binding exposes an API similar to liboqs:
+
+Functions:
+
+1) `generate_kem_keypair()` – use ML‑KEM‑768:  
+   - `kem = oqs.KEM("ML-KEM-768")` (or similar).  
+   - `public_key, secret_key = kem.generate_keypair()`.
+
+2) `encapsulate(public_key)` – returns `(ciphertext, shared_secret)`.
+
+3) `decapsulate(ciphertext, secret_key)` – returns `shared_secret`.
+
+4) `derive_session_key(shared_secret)` – use HKDF or a simple KDF to derive 32‑byte AES key.
+
+5) `encrypt_transaction_pqc(plaintext: bytes) -> (ciphertext, iv, tag, metadata)`  
+   - Generate ML‑KEM shared secret; derive AES key.  
+   - AES‑GCM encrypt.  
+   - Metadata includes:  
+     - `"kem": "ML-KEM-768"`  
+     - `"sym": "AES-256-GCM"`  
+     - public key and ciphertext sizes (obtain from kem or from len(public_key), len(ciphertext)). [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+Agents must adapt exact function names to the chosen Python binding but keep this structure.
+
+***
+
+## 6. Metrics service (`services/metrics_service.py`)
+
+Implements aggregation for dashboard. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+Function:
+
+- `get_current_metrics(session, window_seconds=60)`:
+
+  1) Compute cutoff time `now - window_seconds`.  
+  2) Query `Transaction` rows with `created_at >= cutoff`.  
+  3) Partition into two lists: classical vs pqc.  
+  4) For each mode compute:  
+     - `count`.  
+     - average `latency_ms`.  
+     - average `ciphertext_size`.  
+  5) Return dict:
+
+```python
+{
+  "window_seconds": window_seconds,
+  "classical": { "count": ..., "avg_latency_ms": ..., "avg_ciphertext_size": ... },
+  "pqc": { "count": ..., "avg_latency_ms": ..., "avg_ciphertext_size": ... }
+}
+```
+
+Agents must ensure this is JSON serializable.
+
+***
+
+## 7. API routes
+
+### 7.1 Transaction encryption route (`routes/transactions.py`)
+
+Endpoint: `POST /api/transaction`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+
+Request JSON:
+
+```json
+{
+  "mode": "classical" | "pqc",
+  "transaction": {
+    "from_account": "123",
+    "to_account": "456",
+    "amount": 1000.0,
+    "currency": "INR"
+  }
+}
+```
+
+Implementation steps:
+
+1) Validate `mode`.  
+2) Serialize `transaction` dict to bytes (e.g., `json.dumps(...).encode("utf-8")`).  
+3) Start high‑resolution timer.  
+4) If mode = `"classical"`: call `encrypt_transaction`.  
+   If mode = `"pqc"`: call `encrypt_transaction_pqc`.  
+5) Stop timer; compute `latency_ms`.  
+6) Build a `Transaction` ORM instance with all fields set, including `ciphertext_size = len(ciphertext)`.  
+7) Commit to DB.  
+8) Return JSON:
+
+```json
+{
+  "id": "<id>",
+  "mode": "pqc",
+  "latency_ms": 7.9,
+  "plaintext_size": 128,
+  "ciphertext_size": 1200,
+  "algorithm_info": { ... }
+}
+```
+
+### 7.2 Metrics route (`routes/metrics.py`)
+
+Endpoint: `GET /metrics`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+
+1) Read optional `window_seconds` query param, default 60.  
+2) Get DB session, call `get_current_metrics`.  
+3) Return metrics JSON.
+
+***
+
+## 8. Flask app wiring and dashboard
+
+### 8.1 Flask app (`app.py`)
+
+- Initialize Flask app.  
+- Initialize DB and create tables on first run.  
+- On startup, call `keys.get_rsa_keys()` and `keys.get_pqc_keys()` to ensure keys are present. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/5751c9a8-ece1-47a5-9a31-d8dbee125dbe/Project_Sections_3-1-3-6.md)
+- Register blueprints for `/api/transaction`, `/metrics`, and `GET /dashboard`.  
+- Add `/health` returning `{"status": "ok"}`.
+
+### 8.2 Dashboard route and template
+
+Route: `GET /dashboard`
+
+- Returns `templates/dashboard.html`.
+
+`templates/dashboard.html`:
+
+- Includes:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/js/dashboard.js"></script>
+```
+
+- Contains two `<canvas>` elements:  
+  - `id="latencyChart"`  
+  - `id="sizeChart"`
+
+- Includes simple controls:  
+  - Button “Start Demo Load” that triggers JS to send synthetic transactions in both modes.  
+  - Maybe a dropdown for window size.
+
+### 8.3 Frontend JS (`static/js/dashboard.js`)
+
+Responsibilities:
+
+1) Initialize two Chart.js line charts for latency and ciphertext size over time (two series each: classical vs PQC).  
+2) Set up periodic polling:
+
+```javascript
+setInterval(fetchMetrics, 2000);
+```
+
+`fetchMetrics`:
+
+- Call `/metrics?window_seconds=60`.  
+- Parse JSON, update:  
+  - Append new datapoint to chart datasets with timestamp and average values.  
+  - Update statistics shown in HTML (e.g., current averages and counts).
+
+3) Implement “Start Demo Load”:
+
+- On button click, start a background JS loop that calls `POST /api/transaction` frequently with random transaction data and alternating modes.  
+- This continuously generates data for the dashboard to display.
+
+This matches your prototype guide’s recommendation for a performance comparison dashboard showing classical vs PQC live. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+***
+
+## 9. Tests and validation
+
+### 9.1 Crypto unit tests
+
+In `tests/test_crypto_classical.py`:
+
+- Test `encrypt_transaction` then `decrypt_transaction` returns original plaintext.  
+- Assert metadata contains expected algorithm names and key sizes. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+
+In `tests/test_crypto_pqc.py`:
+
+- Test ML‑KEM keypair generation, encapsulate, decapsulate gives same shared secret. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/4ce23845-2a68-447d-9255-4bcd96dcd2d2/PQC-Banking-API-Implementation.pdf)
+- Test `encrypt_transaction_pqc` then decrypt; assert correctness.  
+
+### 9.2 API smoke tests
+
+- Test `POST /api/transaction` for both modes returns HTTP 200 and expected JSON fields.  
+- Test `GET /metrics` returns valid structure.
+
+***
+
+## 10. Run sequence (for you and agents)
+
+1) Clone repo.  
+2) Run `scripts/install_liboqs_mac.sh`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/collection_a17ea0e5-9409-4977-ab7e-704165006225/f16ff03b-e1da-491d-a95a-ee4d5111489b/I-have-not-done-any-implementation-of-this-project.pdf)
+3) `cd backend` and create a Python 3.11 venv.  
+4) `pip install -r requirements.txt`.  
+5) `python app.py` to start backend + dashboard.  
+6) Open `http://localhost:5000/dashboard`.  
+7) Click “Start Demo Load” to generate traffic; observe classical vs PQC latency and size curves diverging in real time.
