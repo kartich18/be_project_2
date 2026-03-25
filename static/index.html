@@ -3,11 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum-Safe Banking PoC — Dashboard</title>
-    <!-- Placeholder: will be built out in Phase 5 -->
+    <title>Quantum-Safe Banking PoC</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <h1>Quantum-Safe Banking Transaction Dashboard</h1>
-    <p>Dashboard UI coming in Phase 5.</p>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon"></div>
+                    <h1>Quantum-Safe Bank</h1>
+                </div>
+                <div class="status-badge">
+                    <span class="pulse"></span> System Live: ML-KEM-768 Active
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Grid -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Column: Actions -->
+            <div class="left-col">
+                <!-- Transaction Form -->
+                <section class="card glass-card form-section">
+                    <h2>New Transaction</h2>
+                    <form id="tx-form">
+                        <div class="input-group">
+                            <label for="sender">Sender Account</label>
+                            <input type="text" id="sender" value="ACCT-1001" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="receiver">Receiver Account</label>
+                            <input type="text" id="receiver" value="ACCT-9002" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="amount">Amount ($)</label>
+                            <input type="number" id="amount" value="500.00" step="0.01" required>
+                        </div>
+                        <button type="submit" class="btn primary-btn">Secure Transfer</button>
+                    </form>
+                    <div id="tx-status" class="status-message hidden"></div>
+                </section>
+
+                <!-- Load Generator -->
+                <section class="card glass-card load-section">
+                    <h2>Load Generator</h2>
+                    <p>Simulate high-volume network traffic to visualize performance under load.</p>
+                    <button id="btn-load-test" class="btn secondary-btn">Start Demo Load</button>
+                    <div id="load-status" class="status-message hidden"></div>
+                </section>
+                
+                <!-- Metrics Summary Cards -->
+                <section class="summary-cards">
+                    <div class="summary-card">
+                        <h3>Avg Latency (Classical)</h3>
+                        <div class="metric-value" id="val-lat-classical">-- ms</div>
+                        <div class="metric-sub">RSA-2048</div>
+                    </div>
+                    <div class="summary-card highlight">
+                        <h3>Avg Latency (PQC)</h3>
+                        <div class="metric-value" id="val-lat-pqc">-- ms</div>
+                        <div class="metric-sub">ML-KEM-768</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Visualizations -->
+            <div class="right-col">
+                <!-- Real-time Latency Chart -->
+                <section class="card glass-card chart-container">
+                    <h2>Latency Over Time</h2>
+                    <div class="chart-wrapper">
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Aggregated Performance Bars -->
+                <section class="card glass-card chart-container">
+                    <h2>Performance Comparison</h2>
+                    <div class="chart-wrapper">
+                        <canvas id="perfChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Key Sizes Chart -->
+                <section class="card glass-card chart-container">
+                    <h2>Key Size Comparison (Bytes)</h2>
+                    <div class="chart-wrapper">
+                        <canvas id="sizeChart"></canvas>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Transaction History (Full Screen Width) -->
+        <section class="card glass-card history-section-wide">
+            <h2>Recent Transactions</h2>
+            <div class="table-responsive">
+                <table class="tx-table" id="tx-table">
+                    <thead>
+                        <tr>
+                            <th>Tx ID</th>
+                            <th>Time</th>
+                            <th>Sender &rarr; Receiver</th>
+                            <th>Amount ($)</th>
+                            <th>Method</th>
+                            <th>Key Gen (ms)</th>
+                            <th>Encrypt (ms)</th>
+                            <th>Decrypt (ms)</th>
+                            <th>Total (ms)</th>
+                            <th>Key Size (B)</th>
+                            <th>Cipher Size (B)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tx-list">
+                        <!-- Transactions injected here via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

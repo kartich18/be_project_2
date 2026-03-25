@@ -1,0 +1,66 @@
+{
+  "iterations": 5,
+  "classical": {
+    "method": "RSA-2048",
+    "iterations": 5,
+    "key_gen": {
+      "min": 50.599,
+      "max": 129.7563,
+      "avg": 78.516,
+      "median": 74.0712,
+      "stdev": 30.2867
+    },
+    "encrypt": {
+      "min": 0.1474,
+      "max": 0.8912,
+      "avg": 0.3429,
+      "median": 0.1518,
+      "stdev": 0.3215
+    },
+    "decrypt": {
+      "min": 2.0352,
+      "max": 2.2022,
+      "avg": 2.0902,
+      "median": 2.0759,
+      "stdev": 0.0662
+    },
+    "sign": {
+      "min": 0.7971,
+      "max": 1.3361,
+      "avg": 0.9207,
+      "median": 0.8212,
+      "stdev": 0.2331
+    },
+    "verify": {
+      "min": 0.0841,
+      "max": 0.0956,
+      "avg": 0.087,
+      "median": 0.0851,
+      "stdev": 0.0048
+    },
+    "total": {
+      "min": 53.5797,
+      "max": 132.106,
+      "avg": 80.9491,
+      "median": 76.5213,
+      "stdev": 30.163
+    },
+    "key_sizes": {
+      "public_key_bytes": 294,
+      "private_key_bytes": 1216,
+      "ciphertext_bytes": 256
+    }
+  },
+  "pqc": {
+    "method": "ML-KEM-768",
+    "error": "liboqs not installed — PQC benchmark skipped"
+  },
+  "key_sizes": {
+    "classical": {
+      "public_key_bytes": 294,
+      "private_key_bytes": 1216,
+      "ciphertext_bytes": 256
+    },
+    "pqc": {}
+  }
+}

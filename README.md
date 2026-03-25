@@ -1,52 +1,131 @@
 # Quantum-Safe Banking Transaction PoC
 
-A proof-of-concept comparing **RSA-2048** (classical) vs **ML-KEM-768** (post-quantum, FIPS 203) cryptography for banking transactions.
+A proof-of-concept comparing **RSA-2048** (classical) vs **ML-KEM-768** (post-quantum, FIPS 203) cryptography for banking transactions. Built for academic evaluation (SPPU) and industry demonstration (Sarvatra Technologies).
 
-## Features
-- Side-by-side cryptographic benchmarking (keygen, encrypt, decrypt)
-- Flask REST API with transaction processing
-- Real-time dashboard with Chart.js visualizations
-- SQLite data persistence with SQLAlchemy
-- Load generator for stress testing
+---
 
-## Quick Start
+## 🚀 Latest Features
+
+- **Dual Crypto Engine:** Side-by-side processing using RSA-2048 (OAEP/PSS) and ML-KEM-768 alongside AES-256-GCM.
+- **Interactive Dashboard:** Real-time visualisations using Chart.js to compare metrics like encryption time, decryption time, and key generation times.
+- **REST API Integration:** Fully functional Flask endpoints (`/api/transaction`, `/api/metrics`, `/api/benchmark`) handling cryptographic operations seamlessly.
+- **Persistence Layer:** SQLite database integration via SQLAlchemy capturing transaction run times and parameters.
+- **Benchmarking CLI:** A standalone CLI tool (`benchmark_cli.py`) for generating detailed JSON and CSV comparison reports.
+- **Comprehensive Testing:** End-to-end integration tests, route tests, and automated module benchmarking.
+- **NIST Aligned:** Fully compliant with FIPS 203 (ML-KEM) and FIPS 197 (AES-256-GCM) standards.
+
+---
+
+## 🏗 Architecture
+
+```text
+┌─────────────┐      ┌──────────────────────────────────────────┐
+│  Dashboard  │◄────►│              Flask REST API              │
+│  (Chart.js) │      │  POST /api/transaction                   │
+└─────────────┘      │  GET  /api/metrics                       │
+                     │  GET  /api/benchmark                     │
+                     └──────────────┬───────────────────────────┘
+                                    │
+                     ┌──────────────▼───────────────────────────┐
+                     │         Transaction Service              │
+                     │  (orchestrates both crypto pipelines)    │
+                     └──────┬──────────────────┬────────────────┘
+                            │                  │
+                ┌───────────▼──────┐  ┌────────▼─────────┐
+                │  classical.py    │  │     pqc.py        │
+                │  RSA-2048 OAEP   │  │  ML-KEM-768 +     │
+                │  RSA-PSS sign    │  │  AES-256-GCM      │
+                └───────────┬──────┘  └────────┬──────────┘
+                            │                  │
+                     ┌──────▼──────────────────▼────────────────┐
+                     │         SQLite (via SQLAlchemy)          │
+                     │         transactions table               │
+                     └──────────────────────────────────────────┘
+```
+
+---
+
+## ⚙️ Quick Start & Steps to Run
+
+For detailed environment setup (including the `liboqs` C library installation), see the [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) guide.
+
+### 1. Setup
 
 ```bash
-# Create virtual environment
+# Clone the repository
+git clone <repo-url> && cd be_project
+
+# Create & activate a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
+*(Ensure `liboqs` is installed on your system for Post-Quantum features. See setup guide for details.)*
 
-# Run the application
+### 2. Run the Application
+
+```bash
+# Start the Flask web server
 python run.py
+```
 
-# Run tests
+- **Dashboard:** Open your browser and navigate to `http://localhost:5000/`
+- **API Base URL:** `http://localhost:5000/api/`
+
+### 3. Run Benchmark CLI
+
+```bash
+# Generate 100 benchmark iterations and output to docs/
+python benchmark_cli.py
+
+# Specify custom iterations
+python benchmark_cli.py --iterations 500
+```
+
+### 4. Run Tests
+
+```bash
+# Execute the full pytest suite
 pytest tests/ -v
 ```
 
-## Tech Stack
-- **Backend**: Python 3.11+, Flask, SQLAlchemy
-- **Classical Crypto**: `cryptography` library (RSA-2048, OAEP, PSS)
-- **PQC Crypto**: `liboqs-python` (ML-KEM-768, FIPS 203) + AES-256-GCM
-- **Frontend**: HTML/CSS/JS, Chart.js
-- **Database**: SQLite
+---
 
-## Project Structure
-```
-be_project/
-├── config.py           # Central configuration
-├── run.py              # App entry point
-├── requirements.txt    # Dependencies
-├── app/
-│   ├── __init__.py     # Flask app factory
-│   ├── crypto/         # Cryptographic modules
-│   ├── models/         # SQLAlchemy models
-│   ├── routes/         # API blueprints
-│   ├── services/       # Business logic
-│   └── utils/          # Logger, helpers
-├── static/             # Dashboard frontend
-├── tests/              # Test suite
-└── docs/               # Documentation
-```
+## 📚 API Reference (Summary)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/transaction` | `POST` | Process a transaction through both crypto methods |
+| `/api/metrics` | `GET` | Aggregated performance metrics |
+| `/api/benchmark` | `GET` | On-demand benchmark comparison |
+| `/` | `GET` | Dashboard frontend |
+
+> Full API documentation is available in `docs/API.md`
+
+---
+
+## 🔐 Cryptographic Methods
+
+### RSA-2048 (Classical Baseline)
+- **Key generation:** 2048-bit RSA key pair
+- **Encryption:** RSA-OAEP with SHA-256
+- **Signing:** RSA-PSS with SHA-256
+- **Library:** Python `cryptography`
+
+### ML-KEM-768 (Post-Quantum)
+- **KEM:** ML-KEM-768 (FIPS 203, formerly Kyber-768)
+- **Symmetric:** AES-256-GCM (FIPS 197) with HKDF-SHA256 key derivation
+- **Workflow:** keygen → encapsulate → shared secret → AES-GCM encrypt payload
+- **Library:** `liboqs-python` (backed by the Open Quantum Safe `liboqs` C library)
+
+---
+
+## 🛠 Tech Stack
+
+- **Backend:** Python 3.9+, Flask, SQLAlchemy
+- **Database:** SQLite
+- **Crypto Libraries:** `cryptography`, `liboqs-python`
+- **Frontend:** HTML5, CSS3, Vanilla JS, Chart.js
+- **Testing:** pytest, pytest-cov
