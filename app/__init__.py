@@ -30,9 +30,11 @@ def create_app(config_class=None):
     # Register blueprints
     from app.routes.transaction import transaction_bp
     from app.routes.metrics import metrics_bp
+    from app.routes.harvest import harvest_bp
 
     app.register_blueprint(transaction_bp, url_prefix="/api")
     app.register_blueprint(metrics_bp, url_prefix="/api")
+    app.register_blueprint(harvest_bp, url_prefix="/api")
 
     # Register dashboard route
     @app.route("/")

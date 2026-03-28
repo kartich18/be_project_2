@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Attack Simulation | Harvest Now, Decrypt Later</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .timeline-wrapper {
+            position: sticky;
+            top: 70px;
+            z-index: 50;
+            background: rgba(13, 17, 23, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 20px 0;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .timeline-container {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .timeline-line {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--border-color);
+            z-index: 1;
+        }
+        .timeline-progress {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 0%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            z-index: 2;
+            transition: width 0.5s ease;
+        }
+        .timeline-node {
+            position: relative;
+            z-index: 3;
+            width: 36px;
+            height: 36px;
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .timeline-node.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 15px rgba(47, 129, 247, 0.4);
+            background: var(--accent-blue);
+        }
+        .timeline-node.completed {
+            border-color: var(--accent-green);
+            background: var(--accent-green);
+        }
+        .timeline-label {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .simulation-container {
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+            padding-bottom: 100px;
+        }
+
+        .phase-section {
+            scroll-margin-top: 180px;
+            animation: fadeIn 0.8s ease forwards;
+        }
+
+        .data-stream {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--accent-green);
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+            border: 1px solid rgba(63, 185, 80, 0.2);
+        }
+        .quantum-leap-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(13, 17, 23, 0.95);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(20px);
+        }
+        .leap-year {
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+        .nav-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            transition: color 0.2s;
+        }
+        .nav-back:hover {
+            color: var(--text-primary);
+        }
+        .code-view {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 12px;
+            border: var(--glass-border);
+            margin-top: 20px;
+        }
+        .code-view h4 {
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            color: var(--accent-purple);
+        }
+        .json-payload {
+            font-family: monospace;
+            color: #d2a8ff;
+            font-size: 0.85rem;
+        }
+        
+        /* New section styles */
+        .leap-section-v {
+            padding: 40px;
+            text-align: center;
+            background: linear-gradient(180deg, transparent 0%, rgba(47, 129, 247, 0.05) 50%, transparent 100%);
+            border-radius: 20px;
+        }
+        .leap-placeholder {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon"></div>
+                    <h1>Quantum-Safe Bank</h1>
+                </div>
+                <div class="status-badge">
+                    <span class="pulse"></span> Simulation Mode
+                </div>
+            </div>
+        </header>
+
+        <a href="/" class="nav-back">
+            <span>&larr;</span> Back to Dashboard
+        </a>
+
+        <!-- Floating Timeline -->
+        <div class="timeline-wrapper">
+            <div class="timeline-container">
+                <div class="timeline-line"></div>
+                <div class="timeline-progress" id="timeline-progress"></div>
+                
+                <div class="timeline-node active" id="node-1">
+                    1
+                    <div class="timeline-label">Harvest</div>
+                </div>
+                <div class="timeline-node" id="node-2">
+                    2
+                    <div class="timeline-label">The Leap</div>
+                </div>
+                <div class="timeline-node" id="node-3">
+                    3
+                    <div class="timeline-label">Decrypt</div>
+                </div>
+            </div>
+        </div>
+
+        <main class="simulation-container">
+            <!-- Summary Card -->
+            <section class="card glass-card">
+                <h1>Harvest Now, Decrypt Later</h1>
+                <p style="color: var(--text-secondary);">
+                    Demonstration of the end-to-end threat model: from today's data interception to future decryption.
+                </p>
+            </section>
+
+            <!-- Phase 1: Harvest -->
+            <section class="phase-section" id="section-1">
+                <div class="card glass-card">
+                    <h2>Phase 1: Harvest Now (Classical Interception)</h2>
+                    <p>Enter a secret PIN to encrypt using classical RSA-15. This data is harvested by an adversary today.</p>
+                    
+                    <div style="max-width: 400px; margin-top: 20px;">
+                        <div class="input-group">
+                            <label>Secret PIN (Message)</label>
+                            <input type="number" id="secret-pin" value="2" min="1" max="14">
+                        </div>
+                        <button id="btn-harvest" class="btn primary-btn">Encrypt & Harvest</button>
+                    </div>
+
+                    <div id="harvest-result" class="code-view hidden">
+                        <h4>Stolen Data (stolen_database.json)</h4>
+                        <pre class="json-payload" id="harvest-json"></pre>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 10px;">
+                             Attacker successfully intercepted the payload. Encryption prevents classical access for now.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Phase 2: Quantum Leap -->
+            <section class="phase-section leap-section-v" id="section-2">
+                <h2>Phase 2: The Quantum Leap</h2>
+                <p>Simulating the passage of time as quantum computing capabilities mature.</p>
+                <div class="leap-placeholder" id="leap-year-static">Current Year: 2026</div>
+                <button id="btn-go-leap" class="btn secondary-btn" style="max-width: 300px; margin: 0 auto;">Simulate 10 Year Leap &rarr;</button>
+            </section>
+
+            <!-- Phase 3: Decrypt -->
+            <section class="phase-section" id="section-3">
+                <div class="card glass-card">
+                    <h2>Phase 3: Decrypt Later (Quantum Attack)</h2>
+                    <p>Year 2035. Utilizing Shor's Algorithm on simulated quantum hardware to factor the intercepted modulus.</p>
+                    
+                    <div style="max-width: 400px; margin-top: 20px;">
+                        <button id="btn-decrypt" class="btn primary-btn" disabled>Execute Shor's Algorithm</button>
+                    </div>
+
+                    <div id="decrypt-result" class="code-view hidden">
+                        <h4>Quantum Simulation Results</h4>
+                        <div class="data-stream" id="decrypt-log"></div>
+                        
+                        <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div class="summary-card">
+                                <h3>Factors Found</h3>
+                                <div class="metric-value" id="res-factors">? & ?</div>
+                            </div>
+                            <div class="summary-card highlight">
+                                <h3>Decrypted PIN</h3>
+                                <div class="metric-value" id="res-pin">?</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 20px; padding: 15px; background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 8px;">
+                            <p style="color: #f85149; font-size: 0.9rem; font-weight: 600;">
+                                [!] SECURITY BREACH: Classical RSA data has been compromised.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Full Screen Animation Overlay -->
+    <div class="quantum-leap-overlay" id="leap-overlay">
+        <div class="leap-year" id="leap-year-text">2026</div>
+        <p style="color: var(--text-secondary); letter-spacing: 2px;">TIME ELAPSING...</p>
+        <div style="margin-top: 40px; font-size: 1.2rem; color: var(--accent-blue);" id="leap-status-text">
+            Quantum technology in development...
+        </div>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="/static/js/harvest.js"></script>
+</body>
+</html>
