@@ -8,7 +8,8 @@ A proof-of-concept comparing **RSA-2048** (classical) vs **ML-KEM-768** (post-qu
 
 - **Dual Crypto Engine:** Side-by-side processing using RSA-2048 (OAEP/PSS) and ML-KEM-768 alongside AES-256-GCM.
 - **Interactive Dashboard:** Real-time visualisations using Chart.js to compare metrics like encryption time, decryption time, and key generation times.
-- **REST API Integration:** Fully functional Flask endpoints (`/api/transaction`, `/api/metrics`, `/api/benchmark`) handling cryptographic operations seamlessly.
+- **Harvest Now, Decrypt Later (HNDL) Simulation:** A dedicated module demonstrating the threat of quantum computing using Shor's algorithm on intercepted classical data.
+- **REST API Integration:** Fully functional Flask endpoints handling cryptographic operations and the HNDL workflow.
 - **Persistence Layer:** SQLite database integration via SQLAlchemy capturing transaction run times and parameters.
 - **Benchmarking CLI:** A standalone CLI tool (`benchmark_cli.py`) for generating detailed JSON and CSV comparison reports.
 - **Comprehensive Testing:** End-to-end integration tests, route tests, and automated module benchmarking.
@@ -19,10 +20,10 @@ A proof-of-concept comparing **RSA-2048** (classical) vs **ML-KEM-768** (post-qu
 ## 🏗 Architecture
 
 ```text
-┌─────────────┐      ┌──────────────────────────────────────────┐
-│  Dashboard  │◄────►│              Flask REST API              │
-│  (Chart.js) │      │  POST /api/transaction                   │
-└─────────────┘      │  GET  /api/metrics                       │
+┌─────────────┐      ┌──────────────────────────────────────────┐      ┌──────────────────────────┐
+│  Dashboard  │◄────►│              Flask REST API              │◄────►│  HNDL Attack Simulation  │
+│  (Chart.js) │      │  POST /api/transaction                   │      │  (Shor's Algorithm)      │
+└─────────────┘      │  GET  /api/metrics                       │      └──────────────────────────┘
                      │  GET  /api/benchmark                     │
                      └──────────────┬───────────────────────────┘
                                     │
@@ -100,9 +101,12 @@ pytest tests/ -v
 | `/api/transaction` | `POST` | Process a transaction through both crypto methods |
 | `/api/metrics` | `GET` | Aggregated performance metrics |
 | `/api/benchmark` | `GET` | On-demand benchmark comparison |
+| `/api/harvest/start` | `POST` | Trigger Phase 1 of HNDL simulation |
+| `/api/harvest/decrypt` | `POST` | Trigger Phase 3 of HNDL simulation |
 | `/` | `GET` | Dashboard frontend |
+| `/harvest` | `GET` | Harvest simulation frontend |
 
-> Full API documentation is available in `docs/API.md`
+> Full API documentation is available in [docs/API.md](docs/API.md)
 
 ---
 

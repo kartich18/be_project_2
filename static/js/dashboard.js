@@ -4,7 +4,7 @@
  */
 
 // Globals
-let latencyChart, perfChart, sizeChart;
+let latencyChart, perfChart, sizeChart, migrationTrendChart, percentileTrendChart;
 let lastChartUpdate = Date.now();
 const MAX_DATA_POINTS = 30;
 
@@ -24,8 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initial fetch
     fetchMetrics();
+    fetchAdvancedAnalytics(getSelectedWindow());
+
     // Start regular polling
     setInterval(fetchMetrics, 2000);
+    setInterval(() => fetchAdvancedAnalytics(getSelectedWindow()), 5000);
 });
 
 // Setup Initial Chart.js Instances
@@ -147,6 +150,108 @@ function initCharts() {
             }
         }
     });
+
+    // 4. Migration Trend Chart
+    const migrationCanvas = document.getElementById('migrationTrendChart');
+    if (migrationCanvas) {
+        const ctxMigration = migrationCanvas.getContext('2d');
+        migrationTrendChart = new Chart(ctxMigration, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'RSA-2048 %',
+                        data: [],
+                        borderColor: rsaColorBorder,
+                        backgroundColor: 'rgba(47, 129, 247, 0.15)',
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 2
+                    },
+                    {
+                        label: 'ML-KEM-768 %',
+                        data: [],
+                        borderColor: pqcColorBorder,
+                        backgroundColor: 'rgba(163, 113, 247, 0.15)',
+                        tension: 0.3,
+                        borderWidth: 2,
+                        pointRadius: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: { display: true, text: 'Adoption %' },
+                        grid: { color: 'rgba(48, 54, 61, 0.5)' }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
+
+    // 5. Latency Percentiles Trend Chart
+    const percentileCanvas = document.getElementById('percentileTrendChart');
+    if (percentileCanvas) {
+        const ctxPercentile = percentileCanvas.getContext('2d');
+        percentileTrendChart = new Chart(ctxPercentile, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'p50',
+                        data: [],
+                        borderColor: 'rgba(63, 185, 80, 1)',
+                        backgroundColor: 'rgba(63, 185, 80, 0.2)',
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 1.5
+                    },
+                    {
+                        label: 'p95',
+                        data: [],
+                        borderColor: pqcColorBorder,
+                        backgroundColor: pqcColor,
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 1.5
+                    },
+                    {
+                        label: 'p99',
+                        data: [],
+                        borderColor: 'rgba(248, 81, 73, 1)',
+                        backgroundColor: 'rgba(248, 81, 73, 0.2)',
+                        tension: 0.35,
+                        borderWidth: 2,
+                        pointRadius: 1.5
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Latency (ms)' },
+                        grid: { color: 'rgba(48, 54, 61, 0.5)' }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                }
+            }
+        });
+    }
 }
 
 // Event Listeners for Forms and Buttons
@@ -213,7 +318,7 @@ function setupEventListeners() {
                         amount: parseFloat(amount) 
                     })
                 }).then(res => res.json()).then(data => {
-                    if(!res.error) updateChartsWithNewTx(data);
+                    if (!data.error) updateChartsWithNewTx(data);
                 }).catch(e => console.error(e));
             }, 500);
             
@@ -227,6 +332,13 @@ function setupEventListeners() {
             setTimeout(() => { statusEl.classList.add('hidden'); }, 3000);
         }
     });
+
+    const analyticsWindow = document.getElementById('analytics-window');
+    if (analyticsWindow) {
+        analyticsWindow.addEventListener('change', () => {
+            fetchAdvancedAnalytics(getSelectedWindow());
+        });
+    }
 }
 
 function setStatus(element, message, type) {
@@ -280,6 +392,9 @@ async function fetchMetrics() {
         
         // Update Performance Bar Chart (averages)
         if (metrics.classical && metrics.pqc) {
+            document.getElementById('val-lat-classical').textContent = (metrics.classical.avg_total_ms || 0).toFixed(2) + ' ms';
+            document.getElementById('val-lat-pqc').textContent = (metrics.pqc.avg_total_ms || 0).toFixed(2) + ' ms';
+
             perfChart.data.datasets[0].data = [
                 metrics.classical.avg_key_gen_ms || 0,
                 metrics.classical.avg_encrypt_ms || 0,
@@ -305,9 +420,130 @@ async function fetchMetrics() {
             ];
             sizeChart.update('none');
         }
+
+        fetchAdvancedAnalytics(getSelectedWindow());
         
     } catch (error) {
         console.error("Failed to fetch metrics", error);
+    }
+}
+
+function getSelectedWindow() {
+    const picker = document.getElementById('analytics-window');
+    return picker ? picker.value : '24h';
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+async function fetchAdvancedAnalytics(timeWindow) {
+    try {
+        const [percentilesRes, migrationRes, rotationRes, comparisonRes, healthRes, anomalyRes] = await Promise.all([
+            fetch(`/api/v1/analytics/latency-percentiles?time_window=${encodeURIComponent(timeWindow)}`),
+            fetch(`/api/v1/analytics/migration-status?time_window=${encodeURIComponent(timeWindow)}`),
+            fetch('/api/v1/keys/rotation-health'),
+            fetch(`/api/v1/analytics/algorithm-comparison?time_window=${encodeURIComponent(timeWindow)}`),
+            fetch(`/api/v1/analytics/security-health?time_window=${encodeURIComponent(timeWindow)}`),
+            fetch('/api/v1/analytics/anomalies')
+        ]);
+
+        const [percentiles, migration, rotation, comparison, health, anomalies] = await Promise.all([
+            percentilesRes.ok ? percentilesRes.json() : null,
+            migrationRes.ok ? migrationRes.json() : null,
+            rotationRes.ok ? rotationRes.json() : null,
+            comparisonRes.ok ? comparisonRes.json() : null,
+            healthRes.ok ? healthRes.json() : null,
+            anomalyRes.ok ? anomalyRes.json() : null
+        ]);
+
+        if (percentiles) {
+            const p95 = percentiles.p95_ms || 0;
+            const p50 = percentiles.p50_ms || 0;
+            const p99 = percentiles.p99_ms || 0;
+            setText('kpi-p95', `${p95.toFixed(2)} ms`);
+            setText('kpi-percentiles-sub', `p50: ${p50.toFixed(2)} ms | p99: ${p99.toFixed(2)} ms`);
+
+            if (percentileTrendChart) {
+                const ts = new Date().toLocaleTimeString();
+                percentileTrendChart.data.labels.push(ts);
+                percentileTrendChart.data.datasets[0].data.push(p50);
+                percentileTrendChart.data.datasets[1].data.push(p95);
+                percentileTrendChart.data.datasets[2].data.push(p99);
+
+                while (percentileTrendChart.data.labels.length > MAX_DATA_POINTS) {
+                    percentileTrendChart.data.labels.shift();
+                    percentileTrendChart.data.datasets.forEach(ds => ds.data.shift());
+                }
+                percentileTrendChart.update('none');
+            }
+        }
+
+        if (migration) {
+            setText('kpi-migration', `${(migration.mlkem_percentage || 0).toFixed(1)}%`);
+            const growth = migration.mlkem_daily_growth || '+0.00%';
+            const status = migration.status || 'unknown';
+            setText('kpi-migration-sub', `Target ${migration.migration_target || 80}% • ${status}`);
+            setText('kpi-migration-meta', `Daily growth ${growth}`);
+
+            if (migrationTrendChart && Array.isArray(migration.trend)) {
+                migrationTrendChart.data.labels = migration.trend.map(t => t.date?.slice(5) || '');
+                migrationTrendChart.data.datasets[0].data = migration.trend.map(t => t.rsa_percentage || 0);
+                migrationTrendChart.data.datasets[1].data = migration.trend.map(t => t.mlkem_percentage || 0);
+                migrationTrendChart.update('none');
+            }
+        }
+
+        if (rotation) {
+            setText('kpi-rotation', `${(rotation.compliance_score || 0).toFixed(1)}`);
+            setText('kpi-rotation-sub', `${rotation.health_status || 'unknown'} • Overdue ${rotation.keys_overdue_rotation || 0}`);
+        }
+
+        if (comparison) {
+            const latencyDelta = comparison.comparison?.latency_delta_pct || 0;
+            setText('kpi-algo-ratio', `${latencyDelta.toFixed(1)}%`);
+            setText('kpi-algo-ratio-sub', comparison.comparison?.latency_verdict || 'No comparison available');
+
+            const box = document.getElementById('algo-comparison-content');
+            if (box) {
+                box.innerHTML = `
+                    <div>Latency: ${comparison.comparison?.latency_verdict || 'N/A'}</div>
+                    <div>Throughput: ${comparison.comparison?.throughput_verdict || 'N/A'}</div>
+                    <div>Key size delta: ${(comparison.comparison?.size_delta_pct ?? 0).toFixed(1)}%</div>
+                    <div style="margin-top: 8px; color: var(--text-primary);">${comparison.comparison?.recommendation || ''}</div>
+                `;
+            }
+        }
+
+        if (health) {
+            setText('kpi-failure', `${(health.failure_rate_pct || 0).toFixed(2)}%`);
+            setText('kpi-failure-sub', `Status: ${health.status || 'unknown'}`);
+        }
+
+        if (anomalies) {
+            const listEl = document.getElementById('anomaly-list');
+            if (listEl) {
+                listEl.innerHTML = '';
+                const rows = anomalies.detected_anomalies || [];
+
+                if (rows.length === 0) {
+                    const li = document.createElement('li');
+                    li.textContent = 'No anomalies detected.';
+                    listEl.appendChild(li);
+                } else {
+                    rows.forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = `anomaly-${item.severity || 'info'}`;
+                        const metric = item.metric ? `${item.metric}: ` : '';
+                        li.textContent = `[${(item.severity || 'info').toUpperCase()}] ${metric}${(item.delta_pct || 0).toFixed(1)}%`;
+                        listEl.appendChild(li);
+                    });
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch advanced analytics', error);
     }
 }
 

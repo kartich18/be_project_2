@@ -9,6 +9,7 @@ This document outlines the steps to set up the development environment for the Q
 - **Python:** 3.9+ (3.11+ recommended)
 - **C Compiler:** `clang` or `gcc` (for building liboqs)
 - **Build Tools:** `cmake`, `ninja` (for building liboqs)
+- **Quantum Simulator:** `qiskit`, `qiskit-aer` (for HNDL simulation)
 
 ## 1. Install System Dependencies (macOS)
 
@@ -88,7 +89,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-*Note: The `requirements.txt` includes `liboqs-python`, which depends on the `liboqs` C library installed in step 2.*
+*Note: The `requirements.txt` includes `liboqs-python` (depending on the C library in step 2) and `qiskit` for the quantum attack simulation.*
+
+## 6. Quantum Simulation Setup (Optional)
+
+The "Harvest Now, Decrypt Later" dashboard utilizes **Qiskit** to simulate Shor's algorithm. If you encounter issues with `qiskit-aer` on certain architectures, the application will still run but the quantum simulation may be limited or use a slower statevector simulator.
 
 ## 6. Environment Variables
 

@@ -4,6 +4,7 @@ Flask application factory for the Quantum-Safe Banking Transaction PoC.
 from flask import Flask
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 
 from config import get_config
 
@@ -31,10 +32,14 @@ def create_app(config_class=None):
     from app.routes.transaction import transaction_bp
     from app.routes.metrics import metrics_bp
     from app.routes.harvest import harvest_bp
+    from app.routes.analytics import analytics_bp
+    from app.routes.keys import keys_bp
 
     app.register_blueprint(transaction_bp, url_prefix="/api")
     app.register_blueprint(metrics_bp, url_prefix="/api")
     app.register_blueprint(harvest_bp, url_prefix="/api")
+    app.register_blueprint(analytics_bp, url_prefix="/api")
+    app.register_blueprint(keys_bp, url_prefix="/api")
 
     # Register dashboard route
     @app.route("/")
@@ -43,8 +48,25 @@ def create_app(config_class=None):
 
     # Create database tables
     with app.app_context():
-        from app.models import transaction  # noqa: F401
+        from app import models  # noqa: F401
 
         db.create_all()
+        _ensure_schema_extensions()
 
     return app
+
+
+def _ensure_schema_extensions():
+    """Add backward-compatible columns for legacy SQLite databases."""
+    try:
+        columns = db.session.execute(text("PRAGMA table_info(transactions)")).fetchall()
+        existing = {c[1] for c in columns}
+
+        if "latency_bucket" not in existing:
+            db.session.execute(text("ALTER TABLE transactions ADD COLUMN latency_bucket VARCHAR(32)"))
+        if "failure_reason" not in existing:
+            db.session.execute(text("ALTER TABLE transactions ADD COLUMN failure_reason VARCHAR(255)"))
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()

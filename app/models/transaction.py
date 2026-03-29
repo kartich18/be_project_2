@@ -45,6 +45,10 @@ class Transaction(db.Model):
     key_size_bytes = db.Column(db.Integer, nullable=False)
     ciphertext_size_bytes = db.Column(db.Integer, nullable=False)
 
+    # extended analytics metadata (non-breaking, optional)
+    latency_bucket = db.Column(db.String(32), nullable=True)
+    failure_reason = db.Column(db.String(255), nullable=True)
+
     # status
     status = db.Column(db.String(16), nullable=False, default="success")
 
@@ -68,6 +72,8 @@ class Transaction(db.Model):
             "total_time_ms": self.total_time_ms,
             "key_size_bytes": self.key_size_bytes,
             "ciphertext_size_bytes": self.ciphertext_size_bytes,
+            "latency_bucket": self.latency_bucket,
+            "failure_reason": self.failure_reason,
             "status": self.status,
         }
 

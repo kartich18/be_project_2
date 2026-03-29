@@ -25,6 +25,15 @@
                 <div class="status-badge">
                     <span class="pulse"></span> System Live: ML-KEM-768 Active
                 </div>
+                <div class="analytics-window">
+                    <label for="analytics-window">Analytics Window</label>
+                    <select id="analytics-window">
+                        <option value="1h">1h</option>
+                        <option value="24h" selected>24h</option>
+                        <option value="7d">7d</option>
+                        <option value="30d">30d</option>
+                    </select>
+                </div>
                 <nav style="margin-left: 20px;">
                     <a href="/static/harvest.html" style="color: var(--accent-purple); text-decoration: none; font-size: 0.9rem; font-weight: 600; border: 1px solid var(--accent-purple); padding: 5px 12px; border-radius: 6px; transition: all 0.2s;">
                         Attack Simulator &rarr;
@@ -109,6 +118,67 @@
                 </section>
             </div>
         </main>
+
+        <!-- Advanced Analytics -->
+        <section class="card glass-card advanced-section">
+            <h2>Advanced Security & Migration Analytics</h2>
+
+            <div class="advanced-kpi-grid">
+                <div class="kpi-card-adv">
+                    <h3>Latency Percentiles</h3>
+                    <div class="kpi-main" id="kpi-p95">-- ms</div>
+                    <p id="kpi-percentiles-sub">p50: -- | p99: --</p>
+                </div>
+                <div class="kpi-card-adv">
+                    <h3>Post-Quantum Migration</h3>
+                    <div class="kpi-main" id="kpi-migration">--%</div>
+                    <p id="kpi-migration-sub">Target 80%</p>
+                </div>
+                <div class="kpi-card-adv">
+                    <h3>Key Rotation Health</h3>
+                    <div class="kpi-main" id="kpi-rotation">--</div>
+                    <p id="kpi-rotation-sub">Compliance score --</p>
+                </div>
+                <div class="kpi-card-adv">
+                    <h3>Algorithm Ratio</h3>
+                    <div class="kpi-main" id="kpi-algo-ratio">--</div>
+                    <p id="kpi-algo-ratio-sub">Comparing RSA vs ML-KEM</p>
+                </div>
+                <div class="kpi-card-adv">
+                    <h3>Failure Rate</h3>
+                    <div class="kpi-main" id="kpi-failure">--%</div>
+                    <p id="kpi-failure-sub">Status: --</p>
+                </div>
+            </div>
+
+            <div class="advanced-charts-grid">
+                <div class="chart-panel">
+                    <h3>Migration Trend</h3>
+                    <div class="chart-wrapper small">
+                        <canvas id="migrationTrendChart"></canvas>
+                    </div>
+                </div>
+                <div class="chart-panel">
+                    <h3>Latency Percentile Trend</h3>
+                    <div class="chart-wrapper small">
+                        <canvas id="percentileTrendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="advanced-bottom-grid">
+                <div class="algo-comparison-panel">
+                    <h3>Algorithm Performance Comparison</h3>
+                    <div id="algo-comparison-content" class="analytics-content">No data yet.</div>
+                </div>
+                <div class="anomaly-panel">
+                    <h3>Security Anomalies</h3>
+                    <ul id="anomaly-list" class="anomaly-list">
+                        <li>No anomalies detected.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
 
         <!-- Transaction History (Full Screen Width) -->
         <section class="card glass-card history-section-wide">

@@ -2,6 +2,8 @@
 
 > **Project Goal**: Build a Python PoC comparing **RSA-2048** (classical) vs **ML-KEM-768** (post-quantum) cryptography for banking transactions, with a Flask REST API, SQLite data layer, real-time dashboard, and comprehensive benchmarks.
 
+**STATUS**: ✅ ALL PHASES COMPLETED
+
 ---
 
 ## Phase 1: Foundation & Environment Setup
@@ -147,18 +149,31 @@ be_project/
 
 ---
 
-## Summary
+## Phase 7: Harvest Now, Decrypt Later (Threat Simulation)
 
-| Phase | Focus | Est. Effort |
-|-------|-------|-------------|
-| 1 | Foundation & Environment | Day 1–2 |
-| 2 | Cryptographic Core | Day 2–4 |
-| 3 | Data Layer | Day 4–5 |
-| 4 | REST API | Day 5–7 |
-| 5 | Dashboard Frontend | Day 7–10 |
-| 6 | Testing & Docs | Day 10–14 |
+| # | Task | Status |
+|---|------|--------|
+| 7.1 | **Implement `harvest_service.py`** | ✅ Completed |
+| 7.2 | **Shor's Algorithm Integration** (Qiskit) | ✅ Completed |
+| 7.3 | **Interception Simulation Logic** | ✅ Completed |
+| 7.4 | **Interactive Timeline Frontend** | ✅ Completed |
+| 7.5 | **Quantum Execution Visualization** | ✅ Completed |
 
-> **Total estimated timeline: 2–3 weeks**
+---
+
+## Final Status Summary
+
+| Phase | Status |
+|-------|--------|
+| 1. Foundation & Setup | ✅ Complete |
+| 2. Cryptographic Core | ✅ Complete |
+| 3. Data Layer | ✅ Complete |
+| 4. REST API Routes | ✅ Complete |
+| 5. Dashboard Frontend | ✅ Complete |
+| 6. Testing & Documentation | ✅ Complete |
+| 7. Threat Simulation | ✅ Complete |
+
+> **All objectives met for academic submission (SPPU) and industry evaluation.**
 
 ---
 

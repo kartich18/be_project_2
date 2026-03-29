@@ -6,6 +6,7 @@ returns timing comparison.
 """
 from flask import Blueprint, jsonify, request
 
+from app.services.analytics_service import AnalyticsService
 from app.services.transaction_service import TransactionService
 from app.utils.helpers import validate_transaction_payload
 from app.utils.logger import logger
@@ -30,6 +31,13 @@ def create_transaction():
 
     is_valid, error_msg = validate_transaction_payload(data)
     if not is_valid:
+        AnalyticsService.log_security_event(
+            event_type="validation_error",
+            algorithm=None,
+            sender=(data or {}).get("sender") if isinstance(data, dict) else None,
+            receiver=(data or {}).get("receiver") if isinstance(data, dict) else None,
+            error_message=error_msg,
+        )
         return jsonify({"error": error_msg}), 400
 
     try:
@@ -37,4 +45,12 @@ def create_transaction():
         return jsonify(result), 201
     except Exception as exc:  # noqa: BLE001
         logger.exception("Transaction processing failed: %s", exc)
+        if isinstance(data, dict):
+            AnalyticsService.log_security_event(
+                event_type="internal_error",
+                algorithm=None,
+                sender=data.get("sender"),
+                receiver=data.get("receiver"),
+                error_message=str(exc),
+            )
         return jsonify({"error": "Internal server error"}), 500

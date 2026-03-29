@@ -13,7 +13,10 @@ Quantum-Safe Banking Transaction PoC — REST API Reference.
 | `/api/transaction` | POST | Process a transaction through both crypto methods |
 | `/api/metrics` | GET | Aggregated performance metrics |
 | `/api/benchmark` | GET | On-demand benchmark comparison |
+| `/api/harvest/start` | POST | Trigger Phase 1 of HNDL simulation |
+| `/api/harvest/decrypt` | POST | Trigger Phase 3 of HNDL simulation |
 | `/` | GET | Dashboard frontend |
+| `/harvest` | GET | Harvest simulation frontend |
 
 ---
 
@@ -192,6 +195,80 @@ Run an on-demand benchmark comparing classical vs PQC cryptographic operations.
 |--------|-----------|---------|
 | 400 | Invalid iterations | `{"error": "iterations must be a positive integer"}` |
 | 500 | Internal error | `{"error": "Internal server error"}` |
+
+---
+
+---
+
+## POST /api/harvest/start
+
+Trigger Phase 1 of the Harvest Now, Decrypt Later simulation. This endpoint encrypts a small message (PIN) using classical RSA with a known small modulus (N=15) to simulate "harvestable" data.
+
+### Request
+
+```http
+POST /api/harvest/start
+Content-Type: application/json
+```
+
+```json
+{
+  "pin": 2
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `pin` | int | 2 | The secret PIN to encrypt (1-14) |
+
+### Response — 200 OK
+
+```json
+{
+  "ciphertext": 8,
+  "public_key": {
+    "N": 15,
+    "e": 3
+  },
+  "secret_pin": 2,
+  "timestamp": 1711623540.123
+}
+```
+
+---
+
+## POST /api/harvest/decrypt
+
+Trigger Phase 3 of the simulation. This endpoint uses Shor's Algorithm (simulated via Qiskit) to factor the modulus and recover the secret PIN from the ciphertext.
+
+### Request
+
+```http
+POST /api/harvest/decrypt
+Content-Type: application/json
+```
+
+```json
+{
+  "N": 15,
+  "e": 3,
+  "ciphertext": 8
+}
+```
+
+### Response — 200 OK
+
+```json
+{
+  "decrypted_pin": 2,
+  "factors": [3, 5],
+  "measured_int": 4,
+  "measurement": "0100",
+  "period": 4,
+  "phase": 0.25,
+  "private_exponent": 3
+}
+```
 
 ---
 

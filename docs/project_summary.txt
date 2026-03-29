@@ -1,56 +1,45 @@
-Perfect! I've created a comprehensive **Project Summary Document** that serves as your complete reference for implementing the MVP.
+# Project Summary: Quantum-Safe Banking Transaction PoC
 
-## Document Overview
+This document provides a final overview of the Proof-of-Concept (PoC) developed to demonstrate the transition from classical to post-quantum cryptography in banking systems.
 
-The 9000+ line markdown document covers:
+## 🎯 Project Goals
+The primary objective was to evaluate the performance impact of **ML-KEM-768** (FIPS 203) compared to **RSA-2048** and to simulate the real-world threat of **"Harvest Now, Decrypt Later"** attacks.
 
-### **Key Sections:**
+## 🚀 Key Features
 
-1. **Executive Summary** – Problem statement, stakeholder outcomes, quantum-safe goals
+### 1. Dual Cryptographic Engine
+- **Classical**: RSA-2048 (OAEP/PSS) for encryption and signing.
+- **Post-Quantum**: ML-KEM-768 for key encapsulation, combined with AES-256-GCM for symmetric encryption.
+- Side-by-side execution for every transaction to provide direct performance comparisons.
 
-2. **Project Features** – 
-   - Cryptographic features table (RSA-2048 vs ML-KEM-768)
-   - API endpoints: POST `/api/transaction`, GET `/metrics`, dashboard route
-   - Dashboard real-time charts and load generator
+### 2. Interactive Dashboard
+- Real-time visualization of encryption, decryption, and key generation times using **Chart.js**.
+- Automated load generator to simulate high-traffic scenarios and collect statistically significant metrics.
+- Key size comparison charts highlighting the larger overhead of PQC.
 
-3. **Module Decomposition** – Detailed breakdown of 12 Python modules with:
-   - Exact responsibilities
-   - Key function signatures
-   - Design notes and implementation considerations
-   - For both crypto (`classical.py`, `pqc.py`) and business logic layers
+### 3. Harvest Now, Decrypt Later (HNDL) Simulation
+- **Phase 1 (Harvest)**: Encrypting and "stealing" classical RSA-15 data.
+- **Phase 2 (The Leap)**: Simulating the passage of time until cryptographically relevant quantum computers are available.
+- **Phase 3 (Decrypt Later)**: Using **Shor's Algorithm** (via Qiskit) to factor the RSA modulus and recover the secret PIN.
 
-4. **Folder Structure** – Complete directory tree with ~2500-3500 LOC estimate
+### 4. Benchmarking & Reporting
+- Standalone CLI tool (`benchmark_cli.py`) for offline performance analysis.
+- Detailed JSON/CSV reports generated in the `docs/` directory.
 
-5. **Project Requirements** –
-   - Hardware: macOS 11+, 8GB RAM, Python 3.11+
-   - Dependencies: Flask, SQLAlchemy, cryptography, `python-oqs`, pytest
-   - NIST standards alignment (FIPS 203 ML-KEM, FIPS 197 AES-256-GCM)
+## 🛠 Tech Stack
+- **Backend**: Python 3.9+, Flask, SQLAlchemy (SQLite).
+- **Cryptography**: `cryptography` (Classical), `liboqs-python` (PQC), `qiskit` (Quantum Simulation).
+- **Frontend**: HTML5, CSS3, Vanilla JS, Chart.js.
+- **Testing**: Pytest with integration and unit coverage.
 
-6. **Execution Plan** – 6-phase timeline (2-3 weeks):
-   - Phase 1: Foundation & liboqs setup
-   - Phase 2: Cryptographic core
-   - Phase 3: Data layer
-   - Phase 4: REST API routes
-   - Phase 5: Dashboard frontend
-   - Phase 6: Testing & documentation
-
-7. **Success Criteria** – Functional, performance, security, and academic validation targets
-
-8. **Risk Mitigation** – Identified risks (liboqs availability, performance) with workarounds
-
-9. **Deliverables** – Academic (SPPU), industry (Sarvatra), and demo artifacts
-
-10. **Quick Reference** – Command lines for setup and testing
+## 📊 Deliverables
+- Fully functional PoC application.
+- Comprehensive test suite.
+- Detailed benchmarking results.
+- Academic and industry-focused documentation.
 
 ***
 
-## How AI Agents Can Use This Document
-
-Each module (e.g., `crypto/pqc.py`) has:
-- ✅ Exact responsibilities stated
-- ✅ Function signatures with pseudo-signatures
-- ✅ Expected inputs/outputs
-- ✅ Design constraints and notes
-- ✅ Testing requirements
-
-An AI agent can take any section (e.g., "Implement `crypto/pqc.py`") and generate working Python code with minimal guidance.
+**Status**: Completed
+**Academic Alignment**: SPPU Final Year Project
+**Industry Partner**: Sarvatra Technologies

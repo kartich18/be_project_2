@@ -6,16 +6,47 @@ stores results in the database, and returns comparison data.
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 
 from app import db
 from app.crypto import classical
 from app.crypto import pqc as pqc_mod
+from app.models.key_metadata import KeyMetadata
 from app.models.transaction import Transaction
+from app.services.analytics_service import AnalyticsService
 from app.utils.logger import logger
 
 
 class TransactionService:
     """Encapsulates all transaction-processing logic."""
+
+    @staticmethod
+    def _latency_bucket(total_ms: float) -> str:
+        """Map transaction latency to configured bucket labels."""
+        if total_ms < 50:
+            return "<50ms"
+        if total_ms < 100:
+            return "50-100ms"
+        if total_ms < 200:
+            return "100-200ms"
+        if total_ms < 500:
+            return "200-500ms"
+        return ">500ms"
+
+    @staticmethod
+    def _record_key_metadata(session, algorithm: str, timestamp):
+        """Create key metadata row for rotation-health analytics."""
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+        key_row = KeyMetadata(
+            algorithm=algorithm,
+            created_at=timestamp,
+            last_used_at=timestamp,
+            rotation_due_at=timestamp + timedelta(days=90),
+            status="active",
+            key_version=1,
+        )
+        session.add(key_row)
 
     # ------------------------------------------------------------------
     # Core: process a transaction through both crypto pipelines
@@ -65,8 +96,26 @@ class TransactionService:
             key_size_bytes=classical_result["public_key_bytes"],
             ciphertext_size_bytes=classical_result["ciphertext_bytes"],
             status="success" if classical_result["verified"] else "failed",
+            latency_bucket=TransactionService._latency_bucket(classical_result["total_ms"]),
+            failure_reason=None if classical_result["verified"] else "verification_failed",
         )
         session.add(classical_tx)
+        TransactionService._record_key_metadata(
+            session,
+            classical_result["method"],
+            classical_tx.timestamp,
+        )
+
+        if not classical_result["verified"]:
+            AnalyticsService.log_security_event(
+                event_type="decryption_failure",
+                algorithm=classical_result["method"],
+                sender=sender,
+                receiver=receiver,
+                error_message="RSA verification failed",
+                latency_ms=classical_result["total_ms"],
+                auto_commit=False,
+            )
 
         # --- PQC (ML-KEM-768) --------------------------------------------
         pqc_entry = None
@@ -90,11 +139,37 @@ class TransactionService:
                     status=(
                         "success" if pqc_result["verified"] else "failed"
                     ),
+                    latency_bucket=TransactionService._latency_bucket(pqc_result["total_ms"]),
+                    failure_reason=None if pqc_result["verified"] else "verification_failed",
                 )
                 session.add(pqc_entry)
+                TransactionService._record_key_metadata(
+                    session,
+                    pqc_result["method"],
+                    pqc_entry.timestamp,
+                )
+
+                if not pqc_result["verified"]:
+                    AnalyticsService.log_security_event(
+                        event_type="decryption_failure",
+                        algorithm=pqc_result["method"],
+                        sender=sender,
+                        receiver=receiver,
+                        error_message="PQC verification failed",
+                        latency_ms=pqc_result["total_ms"],
+                        auto_commit=False,
+                    )
             except Exception as exc:  # noqa: BLE001
                 pqc_error = str(exc)
                 logger.warning("PQC encrypt_transaction failed: %s", exc)
+                AnalyticsService.log_security_event(
+                    event_type="encryption_failure",
+                    algorithm="ML-KEM-768",
+                    sender=sender,
+                    receiver=receiver,
+                    error_message=str(exc),
+                    auto_commit=False,
+                )
         else:
             pqc_error = "liboqs not installed — PQC processing skipped"
 
@@ -109,6 +184,23 @@ class TransactionService:
             response["pqc"] = pqc_entry.to_dict()
         else:
             response["pqc_error"] = pqc_error
+
+        # Optional lightweight analytics snapshot for dashboard overlays
+        try:
+            response["analytics"] = {
+                "latency_percentiles": {
+                    "rsa_24h": AnalyticsService.get_latency_percentiles(
+                        algorithm="RSA-2048",
+                        time_window="24h",
+                    ),
+                    "mlkem_24h": AnalyticsService.get_latency_percentiles(
+                        algorithm="ML-KEM-768",
+                        time_window="24h",
+                    ),
+                }
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed to compute transaction analytics snapshot: %s", exc)
 
         logger.info(
             "Transaction processed — classical id=%s, pqc id=%s",
@@ -168,6 +260,7 @@ class TransactionService:
                     "avg_encrypt_ms": 0,
                     "avg_decrypt_ms": 0,
                     "avg_total_ms": 0,
+                    "avg_key_size_bytes": 0,
                     "avg_ciphertext_size_bytes": 0,
                 }
                 continue
@@ -187,6 +280,9 @@ class TransactionService:
                 ),
                 "avg_total_ms": round(
                     sum(r.total_time_ms for r in rows) / count, 4
+                ),
+                "avg_key_size_bytes": round(
+                    sum(r.key_size_bytes for r in rows) / count, 2
                 ),
                 "avg_ciphertext_size_bytes": round(
                     sum(r.ciphertext_size_bytes for r in rows) / count, 2

@@ -89,6 +89,27 @@ h1 {
     border: 1px solid rgba(63, 185, 80, 0.2);
 }
 
+.analytics-window {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    margin-right: 16px;
+}
+
+.analytics-window label {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.analytics-window select {
+    background: rgba(13, 17, 23, 0.9);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
 .pulse {
     width: 8px;
     height: 8px;
@@ -304,6 +325,107 @@ input:focus {
 /* Transaction History Full Width */
 .history-section-wide {
     margin-top: 30px;
+}
+
+.advanced-section {
+    margin-top: 30px;
+}
+
+.advanced-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.kpi-card-adv {
+    background: rgba(13, 17, 23, 0.65);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.kpi-card-adv h3 {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.kpi-main {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.kpi-card-adv p {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.advanced-charts-grid,
+.advanced-bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 10px;
+}
+
+.chart-panel,
+.algo-comparison-panel,
+.anomaly-panel {
+    background: rgba(13, 17, 23, 0.65);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.chart-panel h3,
+.algo-comparison-panel h3,
+.anomaly-panel h3 {
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    color: var(--text-primary);
+}
+
+.chart-wrapper.small {
+    height: 220px;
+}
+
+.analytics-content {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.anomaly-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    max-height: 220px;
+    overflow: auto;
+}
+
+.anomaly-critical { color: #f85149; }
+.anomaly-warning { color: #d29922; }
+.anomaly-info { color: var(--accent-blue); }
+
+@media (max-width: 1200px) {
+    .advanced-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 900px) {
+    .advanced-charts-grid,
+    .advanced-bottom-grid {
+        grid-template-columns: 1fr;
+    }
+    .analytics-window {
+        display: none;
+    }
 }
 
 .table-responsive {
