@@ -62,10 +62,18 @@ def _ensure_schema_extensions():
         columns = db.session.execute(text("PRAGMA table_info(transactions)")).fetchall()
         existing = {c[1] for c in columns}
 
-        if "latency_bucket" not in existing:
-            db.session.execute(text("ALTER TABLE transactions ADD COLUMN latency_bucket VARCHAR(32)"))
-        if "failure_reason" not in existing:
-            db.session.execute(text("ALTER TABLE transactions ADD COLUMN failure_reason VARCHAR(255)"))
+        migrations = [
+            ("latency_bucket",      "VARCHAR(32)"),
+            ("failure_reason",      "VARCHAR(255)"),
+            ("encapsulate_time_ms", "FLOAT"),
+            ("decapsulate_time_ms", "FLOAT"),
+            ("secret_key_bytes",    "INTEGER"),
+        ]
+        for col, typedef in migrations:
+            if col not in existing:
+                db.session.execute(
+                    text(f"ALTER TABLE transactions ADD COLUMN {col} {typedef}")
+                )
 
         db.session.commit()
     except Exception:

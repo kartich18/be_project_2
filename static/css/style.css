@@ -353,7 +353,7 @@ input:focus {
 
 .advanced-kpi-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 20px;
 }
@@ -384,7 +384,6 @@ input:focus {
     color: var(--text-secondary);
 }
 
-.advanced-charts-grid,
 .advanced-bottom-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -392,7 +391,6 @@ input:focus {
     margin-top: 10px;
 }
 
-.chart-panel,
 .algo-comparison-panel,
 .anomaly-panel {
     background: rgba(13, 17, 23, 0.65);
@@ -539,3 +537,122 @@ input:focus {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Crypto Breakdown ────────────────────────────────────────── */
+.crypto-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.breakdown-panel {
+    background: rgba(13, 17, 23, 0.65);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.breakdown-panel h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tag-pqc {
+    font-size: 0.65rem;
+    background: rgba(163, 113, 247, 0.2);
+    color: var(--accent-purple);
+    border: 1px solid rgba(163, 113, 247, 0.3);
+    border-radius: 4px;
+    padding: 1px 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.breakdown-hint {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+/* Encap/Decap Table */
+.breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.breakdown-table th {
+    text-align: left;
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.breakdown-table td {
+    padding: 6px 6px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+    font-family: monospace;
+    font-size: 0.82rem;
+}
+
+.breakdown-table td:first-child {
+    font-family: inherit;
+}
+
+/* Ratio / Footprint bar rows */
+.ratio-row,
+.footprint-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.ratio-label,
+.fp-label {
+    width: 96px;
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    text-align: center;
+}
+
+.ratio-track,
+.fp-track {
+    flex: 1;
+    height: 10px;
+    background: rgba(48, 54, 61, 0.5);
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.ratio-fill,
+.fp-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.5s ease;
+}
+
+.ratio-val,
+.fp-val {
+    width: 56px;
+    flex-shrink: 0;
+    text-align: right;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+/* Algorithm fill colours */
+.rsa-fill    { background: var(--accent-blue); }
+.pqc512-fill { background: var(--accent-teal); }
+.pqc768-fill { background: var(--accent-purple); }
+.pqc1024-fill{ background: var(--accent-amber); }

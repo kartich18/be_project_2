@@ -9,22 +9,6 @@ from app.utils.logger import logger
 analytics_bp = Blueprint("analytics", __name__)
 
 
-@analytics_bp.route("/v1/analytics/latency-percentiles", methods=["GET"])
-def latency_percentiles():
-    """Return p50/p95/p99 latency percentiles and trend."""
-    algorithm = request.args.get("algorithm", default=None, type=str)
-    time_window = request.args.get("time_window", default="24h", type=str)
-
-    try:
-        result = AnalyticsService.get_latency_percentiles(
-            algorithm=algorithm,
-            time_window=time_window,
-        )
-        return jsonify(result), 200
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Latency percentile endpoint failed: %s", exc)
-        return jsonify({"error": "Internal server error"}), 500
-
 
 @analytics_bp.route("/v1/analytics/migration-status", methods=["GET"])
 def migration_status():

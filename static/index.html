@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +14,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Header -->
@@ -35,7 +37,8 @@
                     </select>
                 </div>
                 <nav style="margin-left: 20px;">
-                    <a href="/static/harvest.html" style="color: var(--accent-purple); text-decoration: none; font-size: 0.9rem; font-weight: 600; border: 1px solid var(--accent-purple); padding: 5px 12px; border-radius: 6px; transition: all 0.2s;">
+                    <a href="/static/harvest.html"
+                        style="color: var(--accent-purple); text-decoration: none; font-size: 0.9rem; font-weight: 600; border: 1px solid var(--accent-purple); padding: 5px 12px; border-radius: 6px; transition: all 0.2s;">
                         Attack Simulator &rarr;
                     </a>
                 </nav>
@@ -44,7 +47,7 @@
 
         <!-- Main Content Grid -->
         <main class="dashboard-grid">
-            
+
             <!-- Left Column: Actions -->
             <div class="left-col">
                 <!-- Transaction Form -->
@@ -75,7 +78,7 @@
                     <button id="btn-load-test" class="btn secondary-btn">Start Demo Load</button>
                     <div id="load-status" class="status-message hidden"></div>
                 </section>
-                
+
                 <!-- Metrics Summary Cards -->
                 <section class="summary-cards">
                     <div class="summary-card">
@@ -135,11 +138,6 @@
 
             <div class="advanced-kpi-grid">
                 <div class="kpi-card-adv">
-                    <h3>Latency Percentiles</h3>
-                    <div class="kpi-main" id="kpi-p95">-- ms</div>
-                    <p id="kpi-percentiles-sub">p50: -- | p99: --</p>
-                </div>
-                <div class="kpi-card-adv">
                     <h3>Post-Quantum Migration</h3>
                     <div class="kpi-main" id="kpi-migration">--%</div>
                     <p id="kpi-migration-sub">Target 80%</p>
@@ -161,21 +159,6 @@
                 </div>
             </div>
 
-            <div class="advanced-charts-grid">
-                <div class="chart-panel">
-                    <h3>Migration Trend</h3>
-                    <div class="chart-wrapper small">
-                        <canvas id="migrationTrendChart"></canvas>
-                    </div>
-                </div>
-                <div class="chart-panel">
-                    <h3>Latency Percentile Trend</h3>
-                    <div class="chart-wrapper small">
-                        <canvas id="percentileTrendChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
             <div class="advanced-bottom-grid">
                 <div class="algo-comparison-panel">
                     <h3>Algorithm Performance Comparison</h3>
@@ -188,9 +171,47 @@
                     </ul>
                 </div>
             </div>
+
+            <!-- Crypto Breakdown: 3 new metrics -->
+            <div class="crypto-breakdown-grid">
+                <!-- Encapsulation + Decapsulation -->
+                <div class="breakdown-panel">
+                    <h3>Encap + Decap Time <span class="tag-pqc">PQC Only</span></h3>
+                    <table class="breakdown-table" id="breakdown-encapdecap">
+                        <thead><tr><th>Algorithm</th><th>Encap (ms)</th><th>Decap (ms)</th><th>KEM Total (ms)</th></tr></thead>
+                        <tbody>
+                            <tr id="bd-512"><td><span class="method-badge method-pqc-512">ML-KEM-512</span></td><td>--</td><td>--</td><td>--</td></tr>
+                            <tr id="bd-768"><td><span class="method-badge method-pqc-768">ML-KEM-768</span></td><td>--</td><td>--</td><td>--</td></tr>
+                            <tr id="bd-1024"><td><span class="method-badge method-pqc-1024">ML-KEM-1024</span></td><td>--</td><td>--</td><td>--</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Payload Overhead Ratio -->
+                <div class="breakdown-panel">
+                    <h3>Payload Overhead Ratio</h3>
+                    <p class="breakdown-hint">KEM ciphertext bytes &divide; 28 B AES-GCM base overhead</p>
+                    <div class="ratio-bars" id="ratio-bars">
+                        <div class="ratio-row"><span class="ratio-label method-badge method-rsa">RSA-2048</span><div class="ratio-track"><div class="ratio-fill rsa-fill" id="ratio-fill-rsa" style="width:0%"></div></div><span class="ratio-val" id="ratio-val-rsa">--&times;</span></div>
+                        <div class="ratio-row"><span class="ratio-label method-badge method-pqc-512">ML-KEM-512</span><div class="ratio-track"><div class="ratio-fill pqc512-fill" id="ratio-fill-512" style="width:0%"></div></div><span class="ratio-val" id="ratio-val-512">--&times;</span></div>
+                        <div class="ratio-row"><span class="ratio-label method-badge method-pqc-768">ML-KEM-768</span><div class="ratio-track"><div class="ratio-fill pqc768-fill" id="ratio-fill-768" style="width:0%"></div></div><span class="ratio-val" id="ratio-val-768">--&times;</span></div>
+                        <div class="ratio-row"><span class="ratio-label method-badge method-pqc-1024">ML-KEM-1024</span><div class="ratio-track"><div class="ratio-fill pqc1024-fill" id="ratio-fill-1024" style="width:0%"></div></div><span class="ratio-val" id="ratio-val-1024">--&times;</span></div>
+                    </div>
+                </div>
+                <!-- Key Material Footprint -->
+                <div class="breakdown-panel">
+                    <h3>Key Material Footprint</h3>
+                    <p class="breakdown-hint">Public key + Secret key (bytes total)</p>
+                    <div class="footprint-bars" id="footprint-bars">
+                        <div class="footprint-row"><span class="fp-label method-badge method-rsa">RSA-2048</span><div class="fp-track"><div class="fp-fill rsa-fill" id="fp-fill-rsa" style="width:0%"></div></div><span class="fp-val" id="fp-val-rsa">-- B</span></div>
+                        <div class="footprint-row"><span class="fp-label method-badge method-pqc-512">ML-KEM-512</span><div class="fp-track"><div class="fp-fill pqc512-fill" id="fp-fill-512" style="width:0%"></div></div><span class="fp-val" id="fp-val-512">-- B</span></div>
+                        <div class="footprint-row"><span class="fp-label method-badge method-pqc-768">ML-KEM-768</span><div class="fp-track"><div class="fp-fill pqc768-fill" id="fp-fill-768" style="width:0%"></div></div><span class="fp-val" id="fp-val-768">-- B</span></div>
+                        <div class="footprint-row"><span class="fp-label method-badge method-pqc-1024">ML-KEM-1024</span><div class="fp-track"><div class="fp-fill pqc1024-fill" id="fp-fill-1024" style="width:0%"></div></div><span class="fp-val" id="fp-val-1024">-- B</span></div>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <!-- Transaction History (Full Screen Width) -->
+
         <section class="card glass-card history-section-wide">
             <h2>Recent Transactions</h2>
             <div class="table-responsive">
@@ -203,10 +224,12 @@
                             <th>Amount ($)</th>
                             <th>Method</th>
                             <th>Key Gen (ms)</th>
+                            <th>Encap (ms)</th>
                             <th>Encrypt (ms)</th>
+                            <th>Decap (ms)</th>
                             <th>Decrypt (ms)</th>
                             <th>Total (ms)</th>
-                            <th>Key Size (B)</th>
+                            <th>Key Material (B)</th>
                             <th>Cipher Size (B)</th>
                         </tr>
                     </thead>
@@ -221,4 +244,5 @@
     <!-- Custom JS -->
     <script src="/static/js/dashboard.js"></script>
 </body>
+
 </html>

@@ -37,12 +37,15 @@ class Transaction(db.Model):
 
     # timing (milliseconds)
     key_gen_time_ms = db.Column(db.Float, nullable=False)
+    encapsulate_time_ms = db.Column(db.Float, nullable=True)  # PQC-only (KEM encapsulate)
     encrypt_time_ms = db.Column(db.Float, nullable=False)
+    decapsulate_time_ms = db.Column(db.Float, nullable=True)  # PQC-only (KEM decapsulate)
     decrypt_time_ms = db.Column(db.Float, nullable=False)
     total_time_ms = db.Column(db.Float, nullable=False)
 
     # sizes (bytes)
-    key_size_bytes = db.Column(db.Integer, nullable=False)
+    key_size_bytes = db.Column(db.Integer, nullable=False)    # public key
+    secret_key_bytes = db.Column(db.Integer, nullable=True)   # private/secret key (PQC)
     ciphertext_size_bytes = db.Column(db.Integer, nullable=False)
 
     # extended analytics metadata (non-breaking, optional)
@@ -67,10 +70,13 @@ class Transaction(db.Model):
             "currency": self.currency,
             "crypto_method": self.crypto_method,
             "key_gen_time_ms": self.key_gen_time_ms,
+            "encapsulate_time_ms": self.encapsulate_time_ms,
             "encrypt_time_ms": self.encrypt_time_ms,
+            "decapsulate_time_ms": self.decapsulate_time_ms,
             "decrypt_time_ms": self.decrypt_time_ms,
             "total_time_ms": self.total_time_ms,
             "key_size_bytes": self.key_size_bytes,
+            "secret_key_bytes": self.secret_key_bytes,
             "ciphertext_size_bytes": self.ciphertext_size_bytes,
             "latency_bucket": self.latency_bucket,
             "failure_reason": self.failure_reason,

@@ -142,10 +142,13 @@ class TransactionService:
                         currency=currency,
                         crypto_method=pqc_result["method"],
                         key_gen_time_ms=pqc_result["key_gen_ms"],
+                        encapsulate_time_ms=pqc_result["encapsulate_ms"],
                         encrypt_time_ms=pqc_result["encrypt_ms"],
+                        decapsulate_time_ms=pqc_result["decapsulate_ms"],
                         decrypt_time_ms=pqc_result["decrypt_ms"],
                         total_time_ms=pqc_result["total_ms"],
                         key_size_bytes=pqc_result["public_key_bytes"],
+                        secret_key_bytes=pqc_result["secret_key_bytes"],
                         ciphertext_size_bytes=pqc_result["ciphertext_bytes"],
                         status=(
                             "success" if pqc_result["verified"] else "failed"
@@ -198,30 +201,6 @@ class TransactionService:
                 if algo in pqc_entries:
                     response[resp_key] = pqc_entries[algo].to_dict()
 
-        # Optional lightweight analytics snapshot for dashboard overlays
-        try:
-            response["analytics"] = {
-                "latency_percentiles": {
-                    "rsa_24h": AnalyticsService.get_latency_percentiles(
-                        algorithm="RSA-2048",
-                        time_window="24h",
-                    ),
-                    "mlkem512_24h": AnalyticsService.get_latency_percentiles(
-                        algorithm="ML-KEM-512",
-                        time_window="24h",
-                    ),
-                    "mlkem768_24h": AnalyticsService.get_latency_percentiles(
-                        algorithm="ML-KEM-768",
-                        time_window="24h",
-                    ),
-                    "mlkem1024_24h": AnalyticsService.get_latency_percentiles(
-                        algorithm="ML-KEM-1024",
-                        time_window="24h",
-                    ),
-                }
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to compute transaction analytics snapshot: %s", exc)
 
         pqc_ids = [
             f"{algo}={pqc_entries[algo].id}" if algo in pqc_entries else f"{algo}=N/A"
@@ -292,35 +271,57 @@ class TransactionService:
                 result[label] = {
                     "count": 0,
                     "avg_key_gen_ms": 0,
+                    "avg_encapsulate_ms": None,
                     "avg_encrypt_ms": 0,
+                    "avg_decapsulate_ms": None,
                     "avg_decrypt_ms": 0,
                     "avg_total_ms": 0,
                     "avg_key_size_bytes": 0,
+                    "avg_secret_key_bytes": 0,
                     "avg_ciphertext_size_bytes": 0,
+                    "key_material_footprint_bytes": 0,
+                    "payload_overhead_ratio": 0,
                 }
                 continue
 
             count = len(rows)
+            pqc_rows = [r for r in rows if r.encapsulate_time_ms is not None]
+            pqc_count = len(pqc_rows) or 1  # avoid ZeroDivisionError
+
+            avg_pub_key = round(sum(r.key_size_bytes for r in rows) / count, 2)
+            avg_secret_key = round(
+                sum(r.secret_key_bytes for r in pqc_rows if r.secret_key_bytes) / pqc_count, 2
+            ) if pqc_rows else 0
+            avg_ct = round(sum(r.ciphertext_size_bytes for r in rows) / count, 2)
+
             result[label] = {
                 "count": count,
                 "avg_key_gen_ms": round(
                     sum(r.key_gen_time_ms for r in rows) / count, 4
                 ),
+                "avg_encapsulate_ms": round(
+                    sum(r.encapsulate_time_ms for r in pqc_rows) / pqc_count, 4
+                ) if pqc_rows else None,
                 "avg_encrypt_ms": round(
                     sum(r.encrypt_time_ms for r in rows) / count, 4
                 ),
+                "avg_decapsulate_ms": round(
+                    sum(r.decapsulate_time_ms for r in pqc_rows) / pqc_count, 4
+                ) if pqc_rows else None,
                 "avg_decrypt_ms": round(
                     sum(r.decrypt_time_ms for r in rows) / count, 4
                 ),
                 "avg_total_ms": round(
                     sum(r.total_time_ms for r in rows) / count, 4
                 ),
-                "avg_key_size_bytes": round(
-                    sum(r.key_size_bytes for r in rows) / count, 2
-                ),
-                "avg_ciphertext_size_bytes": round(
-                    sum(r.ciphertext_size_bytes for r in rows) / count, 2
-                ),
+                # Key sizes
+                "avg_key_size_bytes": avg_pub_key,
+                "avg_secret_key_bytes": avg_secret_key,
+                "avg_ciphertext_size_bytes": avg_ct,
+                # Derived: key material footprint (public + secret)
+                "key_material_footprint_bytes": round(avg_pub_key + avg_secret_key, 2),
+                # Derived: ratio of KEM ciphertext to AES-GCM output overhead (28 B fixed)
+                "payload_overhead_ratio": round(avg_ct / 28.0, 2),
             }
 
         return result
