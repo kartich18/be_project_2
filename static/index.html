@@ -23,7 +23,7 @@
                     <h1>Quantum-Safe Bank</h1>
                 </div>
                 <div class="status-badge">
-                    <span class="pulse"></span> System Live: ML-KEM-768 Active
+                    <span class="pulse"></span> System Live: ML-KEM Active
                 </div>
                 <div class="analytics-window">
                     <label for="analytics-window">Analytics Window</label>
@@ -83,10 +83,20 @@
                         <div class="metric-value" id="val-lat-classical">-- ms</div>
                         <div class="metric-sub">RSA-2048</div>
                     </div>
+                    <div class="summary-card highlight-512">
+                        <h3>Avg Latency (PQC-512)</h3>
+                        <div class="metric-value" id="val-lat-pqc-512">-- ms</div>
+                        <div class="metric-sub">ML-KEM-512</div>
+                    </div>
                     <div class="summary-card highlight">
-                        <h3>Avg Latency (PQC)</h3>
-                        <div class="metric-value" id="val-lat-pqc">-- ms</div>
+                        <h3>Avg Latency (PQC-768)</h3>
+                        <div class="metric-value" id="val-lat-pqc-768">-- ms</div>
                         <div class="metric-sub">ML-KEM-768</div>
+                    </div>
+                    <div class="summary-card highlight-1024">
+                        <h3>Avg Latency (PQC-1024)</h3>
+                        <div class="metric-value" id="val-lat-pqc-1024">-- ms</div>
+                        <div class="metric-sub">ML-KEM-1024</div>
                     </div>
                 </section>
             </div>
@@ -121,7 +131,7 @@
 
         <!-- Advanced Analytics -->
         <section class="card glass-card advanced-section">
-            <h2>Advanced Security & Migration Analytics</h2>
+            <h2>Advanced Security &amp; Migration Analytics</h2>
 
             <div class="advanced-kpi-grid">
                 <div class="kpi-card-adv">

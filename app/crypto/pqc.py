@@ -1,5 +1,5 @@
 """
-Post-quantum cryptography module — ML-KEM-768.
+Post-quantum cryptography module — ML-KEM-512 / ML-KEM-768 / ML-KEM-1024.
 
 Implements key encapsulation/decapsulation using liboqs (FIPS 203),
 with AES-256-GCM symmetric encryption for the actual payload.
@@ -28,14 +28,19 @@ _oqs = None
 try:
     import oqs as _oqs  # type: ignore[import-untyped]
     PQC_AVAILABLE = True
-    logger.info("liboqs loaded — PQC operations available (ML-KEM-768)")
+    logger.info("liboqs loaded — PQC operations available (ML-KEM-512/768/1024)")
 except (ImportError, OSError, SystemExit):
     logger.warning(
         "liboqs-python not available. PQC operations will be disabled. "
         "Build and install liboqs, then `pip install liboqs-python`."
     )
 
+# Default algorithm (backward compatible)
 KEM_ALGORITHM = "ML-KEM-768"
+
+# All supported KEM security levels
+KEM_ALGORITHMS = ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]
+
 AES_KEY_BITS = 256
 AES_KEY_BYTES = AES_KEY_BITS // 8
 NONCE_BYTES = 12  # 96-bit nonce for AES-GCM
@@ -65,12 +70,16 @@ def _derive_aes_key(shared_secret: bytes) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# KEM  (ML-KEM-768 via liboqs)
+# KEM  (ML-KEM via liboqs)
 # ---------------------------------------------------------------------------
 
-def generate_keypair():
+def generate_keypair(algorithm: str = KEM_ALGORITHM):
     """
-    Generate an ML-KEM-768 key pair.
+    Generate an ML-KEM key pair.
+
+    Args:
+        algorithm: KEM algorithm name (e.g. "ML-KEM-512", "ML-KEM-768",
+                   "ML-KEM-1024"). Defaults to ML-KEM-768.
 
     Returns:
         dict with keys: secret_key, public_key, elapsed_ms,
@@ -80,14 +89,14 @@ def generate_keypair():
     _require_pqc()
     start = time.perf_counter_ns()
 
-    kem = _oqs.KeyEncapsulation(KEM_ALGORITHM)
+    kem = _oqs.KeyEncapsulation(algorithm)
     public_key = kem.generate_keypair()
 
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
     logger.debug(
-        "ML-KEM-768 keygen in %.3f ms  (pub %d B, secret %d B)",
-        elapsed_ms, len(public_key), kem.length_secret_key,
+        "%s keygen in %.3f ms  (pub %d B, secret %d B)",
+        algorithm, elapsed_ms, len(public_key), kem.length_secret_key,
     )
 
     return {
@@ -99,12 +108,13 @@ def generate_keypair():
     }
 
 
-def encapsulate(public_key: bytes):
+def encapsulate(public_key: bytes, algorithm: str = KEM_ALGORITHM):
     """
     Encapsulate: generate a shared secret for the given public key.
 
     Args:
-        public_key: ML-KEM-768 public key bytes.
+        public_key: ML-KEM public key bytes.
+        algorithm:  KEM algorithm name. Defaults to ML-KEM-768.
 
     Returns:
         dict with keys: ciphertext, shared_secret, elapsed_ms.
@@ -112,14 +122,14 @@ def encapsulate(public_key: bytes):
     _require_pqc()
     start = time.perf_counter_ns()
 
-    kem = _oqs.KeyEncapsulation(KEM_ALGORITHM)
+    kem = _oqs.KeyEncapsulation(algorithm)
     ciphertext, shared_secret = kem.encap_secret(public_key)
 
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
     logger.debug(
-        "ML-KEM-768 encapsulate in %.3f ms  (ct %d B)",
-        elapsed_ms, len(ciphertext),
+        "%s encapsulate in %.3f ms  (ct %d B)",
+        algorithm, elapsed_ms, len(ciphertext),
     )
 
     return {
@@ -147,7 +157,7 @@ def decapsulate(kem, ciphertext: bytes):
 
     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
 
-    logger.debug("ML-KEM-768 decapsulate in %.3f ms", elapsed_ms)
+    logger.debug("KEM decapsulate in %.3f ms", elapsed_ms)
 
     return {
         "shared_secret": shared_secret,
@@ -227,9 +237,9 @@ def aes_gcm_decrypt(key: bytes, encrypted_data: bytes) -> dict:
 # End-to-end helper
 # ---------------------------------------------------------------------------
 
-def encrypt_transaction(plaintext: Union[bytes, str]) -> dict:
+def encrypt_transaction(plaintext: Union[bytes, str], algorithm: str = KEM_ALGORITHM) -> dict:
     """
-    Run a full ML-KEM-768 + AES-256-GCM encrypt → decrypt cycle.
+    Run a full ML-KEM + AES-256-GCM encrypt → decrypt cycle.
 
     Workflow:
         1. KEM keygen
@@ -240,6 +250,7 @@ def encrypt_transaction(plaintext: Union[bytes, str]) -> dict:
 
     Args:
         plaintext: Transaction payload (str will be UTF-8 encoded).
+        algorithm: KEM algorithm name (default "ML-KEM-768").
 
     Returns:
         dict with keys:
@@ -254,10 +265,10 @@ def encrypt_transaction(plaintext: Union[bytes, str]) -> dict:
         plaintext = plaintext.encode("utf-8")
 
     # 1. Key generation
-    keygen = generate_keypair()
+    keygen = generate_keypair(algorithm)
 
     # 2. Encapsulate (sender side)
-    encap = encapsulate(keygen["public_key"])
+    encap = encapsulate(keygen["public_key"], algorithm)
 
     # 3. AES-GCM encrypt with shared secret
     enc = aes_gcm_encrypt(encap["shared_secret"], plaintext)
@@ -280,7 +291,7 @@ def encrypt_transaction(plaintext: Union[bytes, str]) -> dict:
     )
 
     return {
-        "method": "ML-KEM-768",
+        "method": algorithm,
         "key_gen_ms": round(keygen["elapsed_ms"], 4),
         "encapsulate_ms": round(encap["elapsed_ms"], 4),
         "encrypt_ms": round(enc["elapsed_ms"], 4),
@@ -292,3 +303,24 @@ def encrypt_transaction(plaintext: Union[bytes, str]) -> dict:
         "ciphertext_bytes": len(enc["encrypted_data"]),
         "verified": verified,
     }
+
+
+def encrypt_transaction_all(plaintext: Union[bytes, str]) -> dict:
+    """
+    Run encrypt_transaction for every supported ML-KEM security level.
+
+    Args:
+        plaintext: Transaction payload.
+
+    Returns:
+        dict keyed by algorithm name, e.g.:
+        {
+            "ML-KEM-512": { ... },
+            "ML-KEM-768": { ... },
+            "ML-KEM-1024": { ... },
+        }
+    """
+    results = {}
+    for algo in KEM_ALGORITHMS:
+        results[algo] = encrypt_transaction(plaintext, algorithm=algo)
+    return results

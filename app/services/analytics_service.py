@@ -18,7 +18,10 @@ class AnalyticsService:
     """Service layer for analytics endpoints added in dashboard enhancement."""
 
     METHOD_RSA = "RSA-2048"
+    METHOD_MLKEM_512 = "ML-KEM-512"
     METHOD_MLKEM = "ML-KEM-768"
+    METHOD_MLKEM_1024 = "ML-KEM-1024"
+    ALL_PQC_METHODS = [METHOD_MLKEM_512, METHOD_MLKEM, METHOD_MLKEM_1024]
 
     @staticmethod
     def parse_time_window(window: str | None) -> timedelta:
@@ -45,8 +48,12 @@ class AnalyticsService:
         value = algorithm.strip().upper()
         if value in {"RSA", "RSA-2048"}:
             return AnalyticsService.METHOD_RSA
-        if value in {"ML-KEM", "ML-KEM-768", "MLKEM", "KYBER"}:
+        if value in {"ML-KEM-512", "MLKEM-512", "MLKEM512"}:
+            return AnalyticsService.METHOD_MLKEM_512
+        if value in {"ML-KEM", "ML-KEM-768", "MLKEM", "KYBER", "MLKEM-768", "MLKEM768"}:
             return AnalyticsService.METHOD_MLKEM
+        if value in {"ML-KEM-1024", "MLKEM-1024", "MLKEM1024"}:
+            return AnalyticsService.METHOD_MLKEM_1024
         return algorithm
 
     @staticmethod
@@ -112,6 +119,7 @@ class AnalyticsService:
 
     @staticmethod
     def _count_by_method(start: datetime, end: datetime) -> tuple[int, int, int]:
+        """Return (total, rsa_count, combined_pqc_count) for migration tracking."""
         total = (
             db.session.query(Transaction)
             .filter(Transaction.timestamp >= start, Transaction.timestamp < end)
@@ -126,12 +134,13 @@ class AnalyticsService:
             )
             .count()
         )
+        # Combine all ML-KEM variants for migration percentage
         mlkem = (
             db.session.query(Transaction)
             .filter(
                 Transaction.timestamp >= start,
                 Transaction.timestamp < end,
-                Transaction.crypto_method == AnalyticsService.METHOD_MLKEM,
+                Transaction.crypto_method.in_(AnalyticsService.ALL_PQC_METHODS),
             )
             .count()
         )
@@ -279,7 +288,9 @@ class AnalyticsService:
                 "next_rotation_date": None,
                 "keys_by_algorithm": {
                     AnalyticsService.METHOD_RSA: {"active": 0, "pending": 0, "overdue": 0},
+                    AnalyticsService.METHOD_MLKEM_512: {"active": 0, "pending": 0, "overdue": 0},
                     AnalyticsService.METHOD_MLKEM: {"active": 0, "pending": 0, "overdue": 0},
+                    AnalyticsService.METHOD_MLKEM_1024: {"active": 0, "pending": 0, "overdue": 0},
                 },
                 "timestamp": now.isoformat(),
             }
@@ -293,12 +304,19 @@ class AnalyticsService:
 
         by_algo = {
             AnalyticsService.METHOD_RSA: {"active": 0, "pending": 0, "overdue": 0},
+            AnalyticsService.METHOD_MLKEM_512: {"active": 0, "pending": 0, "overdue": 0},
             AnalyticsService.METHOD_MLKEM: {"active": 0, "pending": 0, "overdue": 0},
+            AnalyticsService.METHOD_MLKEM_1024: {"active": 0, "pending": 0, "overdue": 0},
         }
 
         for key in keys:
             created = key.created_at or now
+            # Ensure timezone-aware (SQLite stores naive datetimes)
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
             due = key.rotation_due_at or (created + timedelta(days=90))
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
 
             age_days = (now - created).total_seconds() / 86400.0
             days_until = (due - now).total_seconds() / 86400.0
@@ -447,29 +465,32 @@ class AnalyticsService:
         delta_seconds = max(1.0, AnalyticsService.parse_time_window(time_window).total_seconds())
 
         rsa = AnalyticsService._algo_stats(AnalyticsService.METHOD_RSA, start, now)
-        mlkem = AnalyticsService._algo_stats(AnalyticsService.METHOD_MLKEM, start, now)
+        mlkem_512 = AnalyticsService._algo_stats(AnalyticsService.METHOD_MLKEM_512, start, now)
+        mlkem_768 = AnalyticsService._algo_stats(AnalyticsService.METHOD_MLKEM, start, now)
+        mlkem_1024 = AnalyticsService._algo_stats(AnalyticsService.METHOD_MLKEM_1024, start, now)
 
+        # Use ML-KEM-768 as the primary comparison baseline against RSA
         rsa_avg = rsa["avg_latency_ms"]
-        ml_avg = mlkem["avg_latency_ms"]
+        ml_avg = mlkem_768["avg_latency_ms"]
         latency_delta = ((ml_avg - rsa_avg) / rsa_avg * 100.0) if rsa_avg else 0.0
 
         rsa_p99 = rsa["p99_latency_ms"]
-        ml_p99 = mlkem["p99_latency_ms"]
+        ml_p99 = mlkem_768["p99_latency_ms"]
         p99_delta = ((ml_p99 - rsa_p99) / rsa_p99 * 100.0) if rsa_p99 else 0.0
 
         rsa_key = rsa["avg_key_size_b"]
-        ml_key = mlkem["avg_key_size_b"]
+        ml_key = mlkem_768["avg_key_size_b"]
         size_delta = ((ml_key - rsa_key) / rsa_key * 100.0) if rsa_key else 0.0
 
         throughput_rsa = rsa["samples"] / delta_seconds
-        throughput_ml = mlkem["samples"] / delta_seconds
+        throughput_ml = mlkem_768["samples"] / delta_seconds
         throughput_delta = (
             ((throughput_ml - throughput_rsa) / throughput_rsa) * 100.0
             if throughput_rsa else 0.0
         )
 
         if latency_delta < -5:
-            latency_verdict = f"ML-KEM is {abs(latency_delta):.1f}% faster"
+            latency_verdict = f"ML-KEM-768 is {abs(latency_delta):.1f}% faster"
         elif latency_delta > 5:
             latency_verdict = f"RSA-2048 is {latency_delta:.1f}% faster"
         else:
@@ -490,14 +511,20 @@ class AnalyticsService:
 
         rsa_out = dict(rsa)
         rsa_out["throughput_tx_per_sec"] = round(throughput_rsa, 4)
-        ml_out = dict(mlkem)
-        ml_out["throughput_tx_per_sec"] = round(throughput_ml, 4)
+        ml768_out = dict(mlkem_768)
+        ml768_out["throughput_tx_per_sec"] = round(throughput_ml, 4)
+        ml512_out = dict(mlkem_512)
+        ml512_out["throughput_tx_per_sec"] = round(mlkem_512["samples"] / delta_seconds, 4)
+        ml1024_out = dict(mlkem_1024)
+        ml1024_out["throughput_tx_per_sec"] = round(mlkem_1024["samples"] / delta_seconds, 4)
 
         return {
             "time_window": time_window,
             "comparison_date": now.date().isoformat(),
             "rsa_2048": rsa_out,
-            "ml_kem": ml_out,
+            "ml_kem_512": ml512_out,
+            "ml_kem": ml768_out,
+            "ml_kem_1024": ml1024_out,
             "comparison": {
                 "latency_delta_pct": round(latency_delta, 2),
                 "latency_verdict": latency_verdict,

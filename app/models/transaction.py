@@ -1,9 +1,9 @@
 """
 Transaction model — stores transaction data with cryptographic benchmarks.
 
-Each row records one crypto-method run (RSA-2048 *or* ML-KEM-768) for a
-single banking transaction, including all timing metrics produced by the
-crypto layer.
+Each row records one crypto-method run (RSA-2048, ML-KEM-512, ML-KEM-768,
+or ML-KEM-1024) for a single banking transaction, including all timing
+metrics produced by the crypto layer.
 """
 
 from datetime import datetime, timezone
@@ -32,8 +32,8 @@ class Transaction(db.Model):
 
     # --- crypto metadata ----------------------------------------------------
     crypto_method = db.Column(
-        db.String(16), nullable=False
-    )  # "RSA-2048" or "ML-KEM-768"
+        db.String(24), nullable=False
+    )  # "RSA-2048", "ML-KEM-512", "ML-KEM-768", or "ML-KEM-1024"
 
     # timing (milliseconds)
     key_gen_time_ms = db.Column(db.Float, nullable=False)

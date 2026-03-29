@@ -17,6 +17,14 @@ from app.services.analytics_service import AnalyticsService
 from app.utils.logger import logger
 
 
+# Response keys for each PQC variant — maps algorithm name to response key
+_PQC_RESPONSE_KEYS = {
+    "ML-KEM-512": "pqc_512",
+    "ML-KEM-768": "pqc_768",
+    "ML-KEM-1024": "pqc_1024",
+}
+
+
 class TransactionService:
     """Encapsulates all transaction-processing logic."""
 
@@ -56,7 +64,8 @@ class TransactionService:
     def process_transaction(data: dict, session=None) -> dict:
         """
         Accept a transaction payload, encrypt with **both** classical and PQC
-        methods, persist the results, and return a comparison dict.
+        methods (all three ML-KEM security levels), persist the results,
+        and return a comparison dict.
 
         Args:
             data: dict with keys ``amount``, ``sender``, ``receiver``,
@@ -65,8 +74,9 @@ class TransactionService:
                      ``db.session`` when ``None``.
 
         Returns:
-            dict with ``classical``, ``pqc`` (or ``pqc_error``), and the
-            serialised transaction payload that was encrypted.
+            dict with ``classical``, ``pqc_512``, ``pqc_768``, ``pqc_1024``
+            (or ``pqc_error`` if liboqs unavailable), and the serialised
+            transaction payload that was encrypted.
         """
         if session is None:
             session = db.session
@@ -117,59 +127,60 @@ class TransactionService:
                 auto_commit=False,
             )
 
-        # --- PQC (ML-KEM-768) --------------------------------------------
-        pqc_entry = None
+        # --- PQC (ML-KEM-512 / 768 / 1024) --------------------------------
+        pqc_entries = {}  # algo → Transaction
         pqc_error = None
 
         if pqc_mod.PQC_AVAILABLE:
-            try:
-                pqc_result = pqc_mod.encrypt_transaction(payload)
-                pqc_entry = Transaction(
-                    amount=amount,
-                    sender=sender,
-                    receiver=receiver,
-                    currency=currency,
-                    crypto_method=pqc_result["method"],
-                    key_gen_time_ms=pqc_result["key_gen_ms"],
-                    encrypt_time_ms=pqc_result["encrypt_ms"],
-                    decrypt_time_ms=pqc_result["decrypt_ms"],
-                    total_time_ms=pqc_result["total_ms"],
-                    key_size_bytes=pqc_result["public_key_bytes"],
-                    ciphertext_size_bytes=pqc_result["ciphertext_bytes"],
-                    status=(
-                        "success" if pqc_result["verified"] else "failed"
-                    ),
-                    latency_bucket=TransactionService._latency_bucket(pqc_result["total_ms"]),
-                    failure_reason=None if pqc_result["verified"] else "verification_failed",
-                )
-                session.add(pqc_entry)
-                TransactionService._record_key_metadata(
-                    session,
-                    pqc_result["method"],
-                    pqc_entry.timestamp,
-                )
-
-                if not pqc_result["verified"]:
-                    AnalyticsService.log_security_event(
-                        event_type="decryption_failure",
-                        algorithm=pqc_result["method"],
+            for algo in pqc_mod.KEM_ALGORITHMS:
+                try:
+                    pqc_result = pqc_mod.encrypt_transaction(payload, algorithm=algo)
+                    pqc_tx = Transaction(
+                        amount=amount,
                         sender=sender,
                         receiver=receiver,
-                        error_message="PQC verification failed",
-                        latency_ms=pqc_result["total_ms"],
+                        currency=currency,
+                        crypto_method=pqc_result["method"],
+                        key_gen_time_ms=pqc_result["key_gen_ms"],
+                        encrypt_time_ms=pqc_result["encrypt_ms"],
+                        decrypt_time_ms=pqc_result["decrypt_ms"],
+                        total_time_ms=pqc_result["total_ms"],
+                        key_size_bytes=pqc_result["public_key_bytes"],
+                        ciphertext_size_bytes=pqc_result["ciphertext_bytes"],
+                        status=(
+                            "success" if pqc_result["verified"] else "failed"
+                        ),
+                        latency_bucket=TransactionService._latency_bucket(pqc_result["total_ms"]),
+                        failure_reason=None if pqc_result["verified"] else "verification_failed",
+                    )
+                    session.add(pqc_tx)
+                    TransactionService._record_key_metadata(
+                        session,
+                        pqc_result["method"],
+                        pqc_tx.timestamp,
+                    )
+                    pqc_entries[algo] = pqc_tx
+
+                    if not pqc_result["verified"]:
+                        AnalyticsService.log_security_event(
+                            event_type="decryption_failure",
+                            algorithm=pqc_result["method"],
+                            sender=sender,
+                            receiver=receiver,
+                            error_message=f"{algo} verification failed",
+                            latency_ms=pqc_result["total_ms"],
+                            auto_commit=False,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("PQC encrypt_transaction (%s) failed: %s", algo, exc)
+                    AnalyticsService.log_security_event(
+                        event_type="encryption_failure",
+                        algorithm=algo,
+                        sender=sender,
+                        receiver=receiver,
+                        error_message=str(exc),
                         auto_commit=False,
                     )
-            except Exception as exc:  # noqa: BLE001
-                pqc_error = str(exc)
-                logger.warning("PQC encrypt_transaction failed: %s", exc)
-                AnalyticsService.log_security_event(
-                    event_type="encryption_failure",
-                    algorithm="ML-KEM-768",
-                    sender=sender,
-                    receiver=receiver,
-                    error_message=str(exc),
-                    auto_commit=False,
-                )
         else:
             pqc_error = "liboqs not installed — PQC processing skipped"
 
@@ -180,10 +191,12 @@ class TransactionService:
             "classical": classical_tx.to_dict(),
         }
 
-        if pqc_entry is not None:
-            response["pqc"] = pqc_entry.to_dict()
-        else:
+        if pqc_error:
             response["pqc_error"] = pqc_error
+        else:
+            for algo, resp_key in _PQC_RESPONSE_KEYS.items():
+                if algo in pqc_entries:
+                    response[resp_key] = pqc_entries[algo].to_dict()
 
         # Optional lightweight analytics snapshot for dashboard overlays
         try:
@@ -193,8 +206,16 @@ class TransactionService:
                         algorithm="RSA-2048",
                         time_window="24h",
                     ),
-                    "mlkem_24h": AnalyticsService.get_latency_percentiles(
+                    "mlkem512_24h": AnalyticsService.get_latency_percentiles(
+                        algorithm="ML-KEM-512",
+                        time_window="24h",
+                    ),
+                    "mlkem768_24h": AnalyticsService.get_latency_percentiles(
                         algorithm="ML-KEM-768",
+                        time_window="24h",
+                    ),
+                    "mlkem1024_24h": AnalyticsService.get_latency_percentiles(
+                        algorithm="ML-KEM-1024",
                         time_window="24h",
                     ),
                 }
@@ -202,10 +223,14 @@ class TransactionService:
         except Exception as exc:  # noqa: BLE001
             logger.debug("Failed to compute transaction analytics snapshot: %s", exc)
 
+        pqc_ids = [
+            f"{algo}={pqc_entries[algo].id}" if algo in pqc_entries else f"{algo}=N/A"
+            for algo in pqc_mod.KEM_ALGORITHMS
+        ]
         logger.info(
-            "Transaction processed — classical id=%s, pqc id=%s",
+            "Transaction processed — classical id=%s, %s",
             classical_tx.id,
-            pqc_entry.id if pqc_entry else "N/A",
+            ", ".join(pqc_ids),
         )
 
         return response
@@ -222,15 +247,16 @@ class TransactionService:
         Args:
             session: Optional SQLAlchemy session. Falls back to
                      ``db.session`` when ``None``.
-            method:  Filter by crypto method (``"RSA-2048"`` or
-                     ``"ML-KEM-768"``).  ``None`` returns both.
+            method:  Filter by crypto method (``"RSA-2048"``,
+                     ``"ML-KEM-512"``, ``"ML-KEM-768"``,
+                     ``"ML-KEM-1024"``).  ``None`` returns all.
             limit:   Max number of recent transactions to aggregate.
 
         Returns:
-            dict with ``classical`` and/or ``pqc`` sub-dicts containing
-            ``count``, ``avg_key_gen_ms``, ``avg_encrypt_ms``,
-            ``avg_decrypt_ms``, ``avg_total_ms``, and
-            ``avg_ciphertext_size_bytes``.
+            dict with ``classical`` and/or ``pqc_512``, ``pqc_768``,
+            ``pqc_1024`` sub-dicts containing ``count``,
+            ``avg_key_gen_ms``, ``avg_encrypt_ms``, ``avg_decrypt_ms``,
+            ``avg_total_ms``, and ``avg_ciphertext_size_bytes``.
         """
         if session is None:
             session = db.session
@@ -239,8 +265,16 @@ class TransactionService:
 
         result: dict = {}
 
+        # Method label mapping
+        _label_map = {
+            "RSA-2048": "classical",
+            "ML-KEM-512": "pqc_512",
+            "ML-KEM-768": "pqc_768",
+            "ML-KEM-1024": "pqc_1024",
+        }
+
         methods = (
-            [method] if method else ["RSA-2048", "ML-KEM-768"]
+            [method] if method else list(_label_map.keys())
         )
 
         for m in methods:
@@ -252,8 +286,9 @@ class TransactionService:
                 .all()
             )
 
+            label = _label_map.get(m, m)
+
             if not rows:
-                label = "classical" if m == "RSA-2048" else "pqc"
                 result[label] = {
                     "count": 0,
                     "avg_key_gen_ms": 0,
@@ -266,7 +301,6 @@ class TransactionService:
                 continue
 
             count = len(rows)
-            label = "classical" if m == "RSA-2048" else "pqc"
             result[label] = {
                 "count": count,
                 "avg_key_gen_ms": round(

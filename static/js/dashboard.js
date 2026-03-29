@@ -1,6 +1,7 @@
 /**
  * dashboard.js
  * Handles data fetching, transaction submission, and Chart.js rendering for the PQC Dashboard.
+ * Supports RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
  */
 
 // Globals
@@ -12,10 +13,26 @@ const MAX_DATA_POINTS = 30;
 Chart.defaults.color = '#8b949e';
 Chart.defaults.font.family = "'Inter', sans-serif";
 
+// Algorithm color palette
 const rsaColor = 'rgba(47, 129, 247, 0.8)';
 const rsaColorBorder = 'rgba(47, 129, 247, 1)';
-const pqcColor = 'rgba(163, 113, 247, 0.8)';
-const pqcColorBorder = 'rgba(163, 113, 247, 1)';
+const pqc512Color = 'rgba(45, 212, 191, 0.8)';
+const pqc512ColorBorder = 'rgba(45, 212, 191, 1)';
+const pqc768Color = 'rgba(163, 113, 247, 0.8)';
+const pqc768ColorBorder = 'rgba(163, 113, 247, 1)';
+const pqc1024Color = 'rgba(245, 158, 11, 0.8)';
+const pqc1024ColorBorder = 'rgba(245, 158, 11, 1)';
+
+// Method badge CSS class mapping
+function methodBadgeClass(method) {
+    switch (method) {
+        case 'RSA-2048': return 'method-rsa';
+        case 'ML-KEM-512': return 'method-pqc-512';
+        case 'ML-KEM-768': return 'method-pqc-768';
+        case 'ML-KEM-1024': return 'method-pqc-1024';
+        default: return 'method-pqc';
+    }
+}
 
 // Initialize Dashboard
 document.addEventListener('DOMContentLoaded', () => {
@@ -33,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup Initial Chart.js Instances
 function initCharts() {
-    // 1. Latency Line Chart (Real-time)
+    // 1. Latency Line Chart (Real-time) — 4 datasets
     const ctxLat = document.getElementById('latencyChart').getContext('2d');
     latencyChart = new Chart(ctxLat, {
         type: 'line',
@@ -41,7 +58,7 @@ function initCharts() {
             labels: [],
             datasets: [
                 {
-                    label: 'Classical (RSA-2048)',
+                    label: 'RSA-2048',
                     data: [],
                     borderColor: rsaColorBorder,
                     backgroundColor: rsaColor,
@@ -50,10 +67,28 @@ function initCharts() {
                     pointRadius: 2
                 },
                 {
-                    label: 'PQC (ML-KEM-768)',
+                    label: 'ML-KEM-512',
                     data: [],
-                    borderColor: pqcColorBorder,
-                    backgroundColor: pqcColor,
+                    borderColor: pqc512ColorBorder,
+                    backgroundColor: pqc512Color,
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 2
+                },
+                {
+                    label: 'ML-KEM-768',
+                    data: [],
+                    borderColor: pqc768ColorBorder,
+                    backgroundColor: pqc768Color,
+                    tension: 0.4,
+                    borderWidth: 2,
+                    pointRadius: 2
+                },
+                {
+                    label: 'ML-KEM-1024',
+                    data: [],
+                    borderColor: pqc1024ColorBorder,
+                    backgroundColor: pqc1024Color,
                     tension: 0.4,
                     borderWidth: 2,
                     pointRadius: 2
@@ -71,7 +106,7 @@ function initCharts() {
                 },
                 x: {
                     grid: { display: false },
-                    ticks: { display: false } // Hide time labels for cleaner look
+                    ticks: { display: false }
                 }
             },
             plugins: {
@@ -80,7 +115,7 @@ function initCharts() {
         }
     });
 
-    // 2. Performance Comparison Bar Chart
+    // 2. Performance Comparison Bar Chart — 4 datasets
     const ctxPerf = document.getElementById('perfChart').getContext('2d');
     perfChart = new Chart(ctxPerf, {
         type: 'bar',
@@ -93,9 +128,19 @@ function initCharts() {
                     backgroundColor: rsaColor
                 },
                 {
+                    label: 'ML-KEM-512',
+                    data: [0, 0, 0],
+                    backgroundColor: pqc512Color
+                },
+                {
                     label: 'ML-KEM-768',
                     data: [0, 0, 0],
-                    backgroundColor: pqcColor
+                    backgroundColor: pqc768Color
+                },
+                {
+                    label: 'ML-KEM-1024',
+                    data: [0, 0, 0],
+                    backgroundColor: pqc1024Color
                 }
             ]
         },
@@ -115,7 +160,7 @@ function initCharts() {
         }
     });
 
-    // 3. Key Sizes Bar Chart
+    // 3. Key Sizes Bar Chart — 4 datasets
     const ctxSize = document.getElementById('sizeChart').getContext('2d');
     sizeChart = new Chart(ctxSize, {
         type: 'bar',
@@ -128,9 +173,19 @@ function initCharts() {
                     backgroundColor: rsaColor
                 },
                 {
+                    label: 'ML-KEM-512',
+                    data: [0, 0],
+                    backgroundColor: pqc512Color
+                },
+                {
                     label: 'ML-KEM-768',
                     data: [0, 0],
-                    backgroundColor: pqcColor
+                    backgroundColor: pqc768Color
+                },
+                {
+                    label: 'ML-KEM-1024',
+                    data: [0, 0],
+                    backgroundColor: pqc1024Color
                 }
             ]
         },
@@ -170,9 +225,9 @@ function initCharts() {
                         pointRadius: 2
                     },
                     {
-                        label: 'ML-KEM-768 %',
+                        label: 'ML-KEM %',
                         data: [],
-                        borderColor: pqcColorBorder,
+                        borderColor: pqc768ColorBorder,
                         backgroundColor: 'rgba(163, 113, 247, 0.15)',
                         tension: 0.3,
                         borderWidth: 2,
@@ -219,8 +274,8 @@ function initCharts() {
                     {
                         label: 'p95',
                         data: [],
-                        borderColor: pqcColorBorder,
-                        backgroundColor: pqcColor,
+                        borderColor: pqc768ColorBorder,
+                        backgroundColor: pqc768Color,
                         tension: 0.35,
                         borderWidth: 2,
                         pointRadius: 1.5
@@ -355,27 +410,36 @@ function setStatus(element, message, type) {
 
 // Directly inject new transaction into charts before metrics polling catches up
 function updateChartsWithNewTx(txData) {
-    if (!txData.classical || !txData.pqc) return;
+    if (!txData.classical) return;
     
     const now = new Date().toLocaleTimeString();
     
-    // Add latency points
+    // Add latency points — RSA is always present
     latencyChart.data.labels.push(now);
     latencyChart.data.datasets[0].data.push(txData.classical.total_time_ms);
-    latencyChart.data.datasets[1].data.push(txData.pqc.total_time_ms);
+    latencyChart.data.datasets[1].data.push(txData.pqc_512 ? txData.pqc_512.total_time_ms : null);
+    latencyChart.data.datasets[2].data.push(txData.pqc_768 ? txData.pqc_768.total_time_ms : null);
+    latencyChart.data.datasets[3].data.push(txData.pqc_1024 ? txData.pqc_1024.total_time_ms : null);
     
     // Maintain max limit
     if (latencyChart.data.labels.length > MAX_DATA_POINTS) {
         latencyChart.data.labels.shift();
-        latencyChart.data.datasets[0].data.shift();
-        latencyChart.data.datasets[1].data.shift();
+        latencyChart.data.datasets.forEach(ds => ds.data.shift());
     }
     
     latencyChart.update();
     
-    // Also update UI cards immediately to feel responsive
+    // Update UI cards immediately
     document.getElementById('val-lat-classical').textContent = txData.classical.total_time_ms.toFixed(2) + ' ms';
-    document.getElementById('val-lat-pqc').textContent = txData.pqc.total_time_ms.toFixed(2) + ' ms';
+    if (txData.pqc_512) {
+        document.getElementById('val-lat-pqc-512').textContent = txData.pqc_512.total_time_ms.toFixed(2) + ' ms';
+    }
+    if (txData.pqc_768) {
+        document.getElementById('val-lat-pqc-768').textContent = txData.pqc_768.total_time_ms.toFixed(2) + ' ms';
+    }
+    if (txData.pqc_1024) {
+        document.getElementById('val-lat-pqc-1024').textContent = txData.pqc_1024.total_time_ms.toFixed(2) + ' ms';
+    }
     
     addTransactionToList(txData);
 }
@@ -384,42 +448,82 @@ function updateChartsWithNewTx(txData) {
 async function fetchMetrics() {
     console.debug('Fetching latest aggregated metrics...');
     try {
-        // According to routes/metrics.py, limit isn't strictly necessary but helpful
         const res = await fetch('/api/metrics?last=50');
         if (!res.ok) return;
         
         const metrics = await res.json();
         
-        // Update Performance Bar Chart (averages)
-        if (metrics.classical && metrics.pqc) {
+        // Update summary cards
+        if (metrics.classical) {
             document.getElementById('val-lat-classical').textContent = (metrics.classical.avg_total_ms || 0).toFixed(2) + ' ms';
-            document.getElementById('val-lat-pqc').textContent = (metrics.pqc.avg_total_ms || 0).toFixed(2) + ' ms';
+        }
+        if (metrics.pqc_512) {
+            document.getElementById('val-lat-pqc-512').textContent = (metrics.pqc_512.avg_total_ms || 0).toFixed(2) + ' ms';
+        }
+        if (metrics.pqc_768) {
+            document.getElementById('val-lat-pqc-768').textContent = (metrics.pqc_768.avg_total_ms || 0).toFixed(2) + ' ms';
+        }
+        if (metrics.pqc_1024) {
+            document.getElementById('val-lat-pqc-1024').textContent = (metrics.pqc_1024.avg_total_ms || 0).toFixed(2) + ' ms';
+        }
 
+        // Update Performance Bar Chart (averages)
+        if (metrics.classical) {
             perfChart.data.datasets[0].data = [
                 metrics.classical.avg_key_gen_ms || 0,
                 metrics.classical.avg_encrypt_ms || 0,
                 metrics.classical.avg_decrypt_ms || 0
             ];
-            
+        }
+        if (metrics.pqc_512) {
             perfChart.data.datasets[1].data = [
-                metrics.pqc.avg_key_gen_ms || 0,
-                metrics.pqc.avg_encrypt_ms || 0,
-                metrics.pqc.avg_decrypt_ms || 0
+                metrics.pqc_512.avg_key_gen_ms || 0,
+                metrics.pqc_512.avg_encrypt_ms || 0,
+                metrics.pqc_512.avg_decrypt_ms || 0
             ];
-            perfChart.update('none'); // Update without full animation
-            
-            // Update Key Sizes
+        }
+        if (metrics.pqc_768) {
+            perfChart.data.datasets[2].data = [
+                metrics.pqc_768.avg_key_gen_ms || 0,
+                metrics.pqc_768.avg_encrypt_ms || 0,
+                metrics.pqc_768.avg_decrypt_ms || 0
+            ];
+        }
+        if (metrics.pqc_1024) {
+            perfChart.data.datasets[3].data = [
+                metrics.pqc_1024.avg_key_gen_ms || 0,
+                metrics.pqc_1024.avg_encrypt_ms || 0,
+                metrics.pqc_1024.avg_decrypt_ms || 0
+            ];
+        }
+        perfChart.update('none');
+        
+        // Update Key Sizes
+        if (metrics.classical) {
             sizeChart.data.datasets[0].data = [
-                metrics.classical.avg_key_size_bytes || 294, // fallback standard sizes if db empty
+                metrics.classical.avg_key_size_bytes || 294,
                 metrics.classical.avg_ciphertext_size_bytes || 256
             ];
-            
-            sizeChart.data.datasets[1].data = [
-                metrics.pqc.avg_key_size_bytes || 1184,
-                metrics.pqc.avg_ciphertext_size_bytes || 1088
-            ];
-            sizeChart.update('none');
         }
+        if (metrics.pqc_512) {
+            sizeChart.data.datasets[1].data = [
+                metrics.pqc_512.avg_key_size_bytes || 800,
+                metrics.pqc_512.avg_ciphertext_size_bytes || 768
+            ];
+        }
+        if (metrics.pqc_768) {
+            sizeChart.data.datasets[2].data = [
+                metrics.pqc_768.avg_key_size_bytes || 1184,
+                metrics.pqc_768.avg_ciphertext_size_bytes || 1088
+            ];
+        }
+        if (metrics.pqc_1024) {
+            sizeChart.data.datasets[3].data = [
+                metrics.pqc_1024.avg_key_size_bytes || 1568,
+                metrics.pqc_1024.avg_ciphertext_size_bytes || 1568
+            ];
+        }
+        sizeChart.update('none');
 
         fetchAdvancedAnalytics(getSelectedWindow());
         
@@ -507,10 +611,22 @@ async function fetchAdvancedAnalytics(timeWindow) {
 
             const box = document.getElementById('algo-comparison-content');
             if (box) {
+                // Build per-variant latency summary
+                const rsa = comparison.rsa_2048 || {};
+                const m512 = comparison.ml_kem_512 || {};
+                const m768 = comparison.ml_kem || {};
+                const m1024 = comparison.ml_kem_1024 || {};
+
                 box.innerHTML = `
-                    <div>Latency: ${comparison.comparison?.latency_verdict || 'N/A'}</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                        <div><strong style="color: ${rsaColorBorder};">RSA-2048</strong>: ${(rsa.avg_latency_ms || 0).toFixed(3)} ms avg</div>
+                        <div><strong style="color: ${pqc512ColorBorder};">ML-KEM-512</strong>: ${(m512.avg_latency_ms || 0).toFixed(3)} ms avg</div>
+                        <div><strong style="color: ${pqc768ColorBorder};">ML-KEM-768</strong>: ${(m768.avg_latency_ms || 0).toFixed(3)} ms avg</div>
+                        <div><strong style="color: ${pqc1024ColorBorder};">ML-KEM-1024</strong>: ${(m1024.avg_latency_ms || 0).toFixed(3)} ms avg</div>
+                    </div>
+                    <div>Verdict: ${comparison.comparison?.latency_verdict || 'N/A'}</div>
                     <div>Throughput: ${comparison.comparison?.throughput_verdict || 'N/A'}</div>
-                    <div>Key size delta: ${(comparison.comparison?.size_delta_pct ?? 0).toFixed(1)}%</div>
+                    <div>Key size delta (768 vs RSA): ${(comparison.comparison?.size_delta_pct ?? 0).toFixed(1)}%</div>
                     <div style="margin-top: 8px; color: var(--text-primary);">${comparison.comparison?.recommendation || ''}</div>
                 `;
             }
@@ -552,52 +668,50 @@ function addTransactionToList(txData) {
     const tbody = document.getElementById('tx-list');
     if (!tbody) return;
     
-    const { classical, pqc } = txData;
+    const { classical, pqc_512, pqc_768, pqc_1024 } = txData;
+    if (!classical) return;
     
     // Format functions
     const formatTime = (ms) => `<span class="time-val">${ms.toFixed(4)}</span>`;
     const formatTimeShort = (d) => new Date(d).toLocaleTimeString();
 
-    // Create Classical Row
-    const trClass = document.createElement('tr');
-    trClass.innerHTML = `
-        <td>#${classical.id}</td>
-        <td>${formatTimeShort(classical.timestamp)}</td>
-        <td>${classical.sender} &rarr; ${classical.receiver}</td>
-        <td style="color: var(--accent-green)">$${classical.amount.toFixed(2)}</td>
-        <td><span class="method-badge method-rsa">${classical.crypto_method}</span></td>
-        <td>${formatTime(classical.key_gen_time_ms)}</td>
-        <td>${formatTime(classical.encrypt_time_ms)}</td>
-        <td>${formatTime(classical.decrypt_time_ms)}</td>
-        <td><strong>${formatTime(classical.total_time_ms)}</strong></td>
-        <td>${classical.key_size_bytes}</td>
-        <td>${classical.ciphertext_size_bytes}</td>
-    `;
+    // Helper to build a table row from a tx dict
+    function buildRow(tx) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>#${tx.id}</td>
+            <td>${formatTimeShort(tx.timestamp)}</td>
+            <td>${tx.sender} &rarr; ${tx.receiver}</td>
+            <td style="color: var(--accent-green)">$${tx.amount.toFixed(2)}</td>
+            <td><span class="method-badge ${methodBadgeClass(tx.crypto_method)}">${tx.crypto_method}</span></td>
+            <td>${formatTime(tx.key_gen_time_ms)}</td>
+            <td>${formatTime(tx.encrypt_time_ms)}</td>
+            <td>${formatTime(tx.decrypt_time_ms)}</td>
+            <td><strong>${formatTime(tx.total_time_ms)}</strong></td>
+            <td>${tx.key_size_bytes}</td>
+            <td>${tx.ciphertext_size_bytes}</td>
+        `;
+        return tr;
+    }
+
+    // Build rows in order: classical, pqc_512, pqc_768, pqc_1024
+    const rows = [];
+    rows.push(buildRow(classical));
+    if (pqc_512) rows.push(buildRow(pqc_512));
+    if (pqc_768) rows.push(buildRow(pqc_768));
+    if (pqc_1024) {
+        const lastRow = buildRow(pqc_1024);
+        lastRow.style.borderBottom = '2px solid rgba(48, 54, 61, 0.8)';
+        rows.push(lastRow);
+    }
     
-    // Create PQC Row
-    const trPQC = document.createElement('tr');
-    trPQC.innerHTML = `
-        <td>#${pqc.id}</td>
-        <td>${formatTimeShort(pqc.timestamp)}</td>
-        <td>${pqc.sender} &rarr; ${pqc.receiver}</td>
-        <td style="color: var(--accent-green)">$${pqc.amount.toFixed(2)}</td>
-        <td><span class="method-badge method-pqc">${pqc.crypto_method}</span></td>
-        <td>${formatTime(pqc.key_gen_time_ms)}</td>
-        <td>${formatTime(pqc.encrypt_time_ms)}</td>
-        <td>${formatTime(pqc.decrypt_time_ms)}</td>
-        <td><strong>${formatTime(pqc.total_time_ms)}</strong></td>
-        <td>${pqc.key_size_bytes}</td>
-        <td>${pqc.ciphertext_size_bytes}</td>
-    `;
+    // Insert in reverse order so they appear top-to-bottom
+    for (let i = rows.length - 1; i >= 0; i--) {
+        tbody.insertBefore(rows[i], tbody.firstChild);
+    }
     
-    // Add spacer line to separate transactions clearly
-    trPQC.style.borderBottom = '2px solid rgba(48, 54, 61, 0.8)';
-    
-    tbody.insertBefore(trPQC, tbody.firstChild);
-    tbody.insertBefore(trClass, tbody.firstChild);
-    
-    // Limit to 40 rows (20 transactions) in memory
-    while (tbody.children.length > 40) {
+    // Limit to 80 rows (20 transactions × 4 rows each) in memory
+    while (tbody.children.length > 80) {
         tbody.removeChild(tbody.lastChild);
     }
 }

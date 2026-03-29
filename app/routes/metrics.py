@@ -17,11 +17,12 @@ def get_metrics():
     """Return aggregated performance metrics from recent transactions.
 
     Query params:
-        method  — ``RSA-2048`` or ``ML-KEM-768`` (optional, default: both)
+        method  — ``RSA-2048``, ``ML-KEM-512``, ``ML-KEM-768``,
+                  or ``ML-KEM-1024`` (optional, default: all)
         last    — max rows to consider (optional, default: 100)
 
     Returns:
-        200 — metrics dict with classical and/or pqc sub-dicts.
+        200 — metrics dict with classical and/or pqc_512/pqc_768/pqc_1024 sub-dicts.
         500 — internal error.
     """
     method = request.args.get("method", default=None, type=str)
