@@ -1,45 +1,7 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environment
 venv/
-env/
-.venv/
-.env/
-
-# Distribution / packaging
-*.egg-info/
-dist/
-build/
-
-# Database
+__pycache__/
 *.db
-*.sqlite3
-
-# Logs
-*.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS files
+*.pyc
 .DS_Store
-Thumbs.db
-
-# Environment variables
-.env
-.flaskenv
-
-# pytest
-.pytest_cache/
-htmlcov/
-.coverage
-
-# liboqs build artifacts
-liboqs/
+instance/
+static/uploads/
