@@ -25,7 +25,9 @@
                     <h1>Quantum-Safe Bank</h1>
                 </div>
                 <div class="status-badge">
-                    <span class="pulse"></span> System Live: ML-KEM Active
+                    <span class="pulse" id="live-pulse"></span>
+                    <span id="live-label">System Live: ML-KEM Active</span>
+                    <span id="sse-indicator" style="margin-left:10px; font-size:0.75rem; color:var(--text-muted);">(connecting...)</span>
                 </div>
                 <div class="analytics-window">
                     <label for="analytics-window">Analytics Window</label>
@@ -36,11 +38,18 @@
                         <option value="30d">30d</option>
                     </select>
                 </div>
-                <nav style="margin-left: 20px;">
+                <nav style="margin-left: 20px; display:flex; align-items:center; gap:12px;">
                     <a href="/static/harvest.html"
                         style="color: var(--accent-purple); text-decoration: none; font-size: 0.9rem; font-weight: 600; border: 1px solid var(--accent-purple); padding: 5px 12px; border-radius: 6px; transition: all 0.2s;">
                         Attack Simulator &rarr;
                     </a>
+                    <span id="header-username" style="font-size:0.82rem; color:var(--text-muted);"></span>
+                    <button id="logout-btn"
+                        style="background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3); color:#f87171; padding:5px 12px; border-radius:6px; font-size:0.85rem; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s;"
+                        onmouseover="this.style.background='rgba(248,113,113,0.2)'"
+                        onmouseout="this.style.background='rgba(248,113,113,0.12)'">
+                        Logout
+                    </button>
                 </nav>
             </div>
         </header>
@@ -77,6 +86,31 @@
                     <p>Simulate high-volume network traffic to visualize performance under load.</p>
                     <button id="btn-load-test" class="btn secondary-btn">Start Demo Load</button>
                     <div id="load-status" class="status-message hidden"></div>
+                </section>
+
+                <!-- Peer Network -->
+                <section class="card glass-card" style="padding: 20px;">
+                    <h2 style="margin-bottom:12px;">🌐 Peer Network</h2>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <input
+                            type="text"
+                            id="peer-ip"
+                            placeholder="192.168.x.x"
+                            style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:8px 12px; color:var(--text-primary); font-family:inherit; font-size:0.85rem; outline:none;"
+                        >
+                        <input
+                            type="number"
+                            id="peer-port"
+                            value="5000"
+                            placeholder="port"
+                            style="width:80px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:8px 10px; color:var(--text-primary); font-family:inherit; font-size:0.85rem; outline:none;"
+                        >
+                        <button id="btn-connect-peer" class="btn primary-btn" style="padding:8px 14px; font-size:0.85rem;">Connect</button>
+                    </div>
+                    <div id="peer-status" class="status-message hidden"></div>
+                    <div id="peer-list" style="margin-top:10px;">
+                        <p style="color:var(--text-muted); font-size:0.82rem;">No peers connected.</p>
+                    </div>
                 </section>
 
                 <!-- Metrics Summary Cards -->

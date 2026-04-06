@@ -14,6 +14,7 @@ from app.crypto import pqc as pqc_mod
 from app.models.key_metadata import KeyMetadata
 from app.models.transaction import Transaction
 from app.services.analytics_service import AnalyticsService
+from app.services.event_bus import EventBus
 from app.utils.logger import logger
 
 
@@ -61,17 +62,19 @@ class TransactionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def process_transaction(data: dict, session=None) -> dict:
+    def process_transaction(data: dict, session=None, origin_ip: str = None, broadcast: bool = True) -> dict:
         """
         Accept a transaction payload, encrypt with **both** classical and PQC
         methods (all three ML-KEM security levels), persist the results,
         and return a comparison dict.
 
         Args:
-            data: dict with keys ``amount``, ``sender``, ``receiver``,
-                  and optionally ``currency`` (default ``"INR"``).
-            session: Optional SQLAlchemy session. Falls back to
-                     ``db.session`` when ``None``.
+            data:       dict with keys ``amount``, ``sender``, ``receiver``,
+                        and optionally ``currency`` (default ``"INR"``).
+            session:    Optional SQLAlchemy session. Falls back to
+                        ``db.session`` when ``None``.
+            origin_ip:  LAN IP of the machine that initiated this transaction.
+            broadcast:  If True, broadcast to peer nodes after saving.
 
         Returns:
             dict with ``classical``, ``pqc_512``, ``pqc_768``, ``pqc_1024``
@@ -81,12 +84,15 @@ class TransactionService:
         if session is None:
             session = db.session
 
-        amount = data.get("amount", 0)
-        sender = data.get("sender", "")
+        amount   = data.get("amount", 0)
+        sender   = data.get("sender", "")
         receiver = data.get("receiver", "")
         currency = data.get("currency", "INR")
 
-        logger.debug("Processing transaction for %s -> %s (amount: %s %s)", sender, receiver, amount, currency)
+        logger.debug(
+            "Processing transaction for %s -> %s (amount: %s %s, origin_ip: %s)",
+            sender, receiver, amount, currency, origin_ip,
+        )
 
         # Build the plaintext that the crypto layer will encrypt
         payload = json.dumps(data, sort_keys=True).encode("utf-8")
@@ -108,6 +114,7 @@ class TransactionService:
             status="success" if classical_result["verified"] else "failed",
             latency_bucket=TransactionService._latency_bucket(classical_result["total_ms"]),
             failure_reason=None if classical_result["verified"] else "verification_failed",
+            origin_ip=origin_ip,
         )
         session.add(classical_tx)
         TransactionService._record_key_metadata(
@@ -155,6 +162,7 @@ class TransactionService:
                         ),
                         latency_bucket=TransactionService._latency_bucket(pqc_result["total_ms"]),
                         failure_reason=None if pqc_result["verified"] else "verification_failed",
+                        origin_ip=origin_ip,
                     )
                     session.add(pqc_tx)
                     TransactionService._record_key_metadata(
@@ -201,7 +209,6 @@ class TransactionService:
                 if algo in pqc_entries:
                     response[resp_key] = pqc_entries[algo].to_dict()
 
-
         pqc_ids = [
             f"{algo}={pqc_entries[algo].id}" if algo in pqc_entries else f"{algo}=N/A"
             for algo in pqc_mod.KEM_ALGORITHMS
@@ -211,6 +218,22 @@ class TransactionService:
             classical_tx.id,
             ", ".join(pqc_ids),
         )
+
+        # --- Publish to SSE subscribers ------------------------------------
+        EventBus.publish({
+            "type":   "transaction",
+            "source": "peer" if origin_ip else "local",
+            "data":   response,
+        })
+
+        # --- Broadcast to peer nodes (only for locally-initiated transactions)
+        if broadcast:
+            try:
+                from app.services.peer_service import PeerService
+                raw_payload = json.dumps(data, sort_keys=True).encode("utf-8")
+                PeerService.broadcast_transaction(raw_payload)
+            except Exception as exc:
+                logger.warning("Peer broadcast failed: %s", exc)
 
         return response
 

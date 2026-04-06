@@ -1,14 +1,16 @@
 """
 Flask application factory for the Quantum-Safe Banking Transaction PoC.
 """
-from flask import Flask
+from flask import Flask, jsonify, redirect, url_for, render_template
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager, verify_jwt_in_request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
 from config import get_config
 
-db = SQLAlchemy()
+db  = SQLAlchemy()
+jwt = JWTManager()
 
 
 def create_app(config_class=None):
@@ -27,24 +29,66 @@ def create_app(config_class=None):
     # Initialize extensions
     CORS(app)
     db.init_app(app)
+    jwt.init_app(app)
 
     # Register blueprints
+    from app.routes.auth import auth_bp
     from app.routes.transaction import transaction_bp
     from app.routes.metrics import metrics_bp
     from app.routes.harvest import harvest_bp
     from app.routes.analytics import analytics_bp
     from app.routes.keys import keys_bp
+    from app.routes.peer import peer_bp
 
+    app.register_blueprint(auth_bp,        url_prefix="/api")
     app.register_blueprint(transaction_bp, url_prefix="/api")
-    app.register_blueprint(metrics_bp, url_prefix="/api")
-    app.register_blueprint(harvest_bp, url_prefix="/api")
-    app.register_blueprint(analytics_bp, url_prefix="/api")
-    app.register_blueprint(keys_bp, url_prefix="/api")
+    app.register_blueprint(metrics_bp,     url_prefix="/api")
+    app.register_blueprint(harvest_bp,     url_prefix="/api")
+    app.register_blueprint(analytics_bp,   url_prefix="/api")
+    app.register_blueprint(keys_bp,        url_prefix="/api")
+    app.register_blueprint(peer_bp,        url_prefix="/api")
 
-    # Register dashboard route
+    from app.routes.stream import stream_bp
+    app.register_blueprint(stream_bp,      url_prefix="/api")
+
+    # Register page routes
     @app.route("/")
     def dashboard():
-        return app.send_static_file("index.html")
+        return render_template("index.html")
+
+    @app.route("/login")
+    def login_page():
+        return render_template("login.html")
+
+    @app.route("/harvest")
+    def harvest_page():
+        return render_template("harvest.html")
+
+    # ---------------------------------------------------------------------------
+    # JWT guard — protect all /api/* routes except /api/auth/*
+    # ---------------------------------------------------------------------------
+    _PUBLIC_PREFIXES = (
+        "/api/auth/",
+        "/api/p2p/",   # P2P node-to-node endpoints use HMAC, not JWT
+        "/static/",
+    )
+
+    @app.before_request
+    def enforce_jwt():
+        from flask import request
+        path = request.path
+        # Only guard API routes
+        if not path.startswith("/api/"):
+            return None
+        # Allow public prefixes through
+        for prefix in _PUBLIC_PREFIXES:
+            if path.startswith(prefix):
+                return None
+        # Verify JWT — return 401 if missing/invalid
+        try:
+            verify_jwt_in_request()
+        except Exception as exc:
+            return jsonify({"error": "Authentication required", "detail": str(exc)}), 401
 
     # Create database tables
     with app.app_context():
@@ -68,6 +112,7 @@ def _ensure_schema_extensions():
             ("encapsulate_time_ms", "FLOAT"),
             ("decapsulate_time_ms", "FLOAT"),
             ("secret_key_bytes",    "INTEGER"),
+            ("origin_ip",           "VARCHAR(45)"),
         ]
         for col, typedef in migrations:
             if col not in existing:

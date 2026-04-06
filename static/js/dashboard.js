@@ -2,7 +2,79 @@
  * dashboard.js
  * Handles data fetching, transaction submission, and Chart.js rendering for the PQC Dashboard.
  * Supports RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+ *
+ * Auth: All API calls use JWT Bearer tokens via authFetch(). On 401 → redirect to /login.
  */
+
+// ── Auth helpers ────────────────────────────────────────────────────────────
+
+function getAccessToken() {
+    return localStorage.getItem('access_token');
+}
+
+async function refreshAccessToken() {
+    const refresh = localStorage.getItem('refresh_token');
+    if (!refresh) return null;
+    try {
+        const res = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${refresh}` },
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        localStorage.setItem('access_token', data.access_token);
+        return data.access_token;
+    } catch { return null; }
+}
+
+/** Fetch wrapper that automatically attaches JWT and handles 401 token refresh. */
+async function authFetch(url, options = {}) {
+    let token = getAccessToken();
+    if (!token) { window.location.replace('/login'); return; }
+
+    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    let res = await fetch(url, { ...options, headers });
+
+    // Try to refresh once on 401
+    if (res.status === 401) {
+        token = await refreshAccessToken();
+        if (!token) { window.location.replace('/login'); return; }
+        headers['Authorization'] = `Bearer ${token}`;
+        res = await fetch(url, { ...options, headers });
+        if (res.status === 401) { window.location.replace('/login'); return; }
+    }
+    return res;
+}
+
+// ── Auth guard on load ───────────────────────────────────────────────────────
+
+(function checkAuth() {
+    if (!getAccessToken()) {
+        window.location.replace('/login');
+    }
+    // Show username in header
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const el = document.getElementById('header-username');
+        if (el && user.username) el.textContent = `👤 ${user.username}`;
+    } catch { /* ignore */ }
+})();
+
+// Logout
+document.addEventListener('DOMContentLoaded', () => {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await authFetch('/api/auth/logout', { method: 'POST' });
+            } catch { /* ignore */ }
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+            window.location.replace('/login');
+        });
+    }
+});
 
 // Globals
 let latencyChart, perfChart, sizeChart;
@@ -38,15 +110,169 @@ function methodBadgeClass(method) {
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
     setupEventListeners();
-    
+    setupSSE();
+    setupPeerPanel();
+
     // Initial fetch
     fetchMetrics();
     fetchAdvancedAnalytics(getSelectedWindow());
+    fetchPeers();
 
-    // Start regular polling
-    setInterval(fetchMetrics, 2000);
-    setInterval(() => fetchAdvancedAnalytics(getSelectedWindow()), 5000);
+    // Polling fallback (SSE replaces transaction feed; keep metrics & analytics polling)
+    setInterval(fetchMetrics, 5000);
+    setInterval(() => fetchAdvancedAnalytics(getSelectedWindow()), 10000);
+    setInterval(fetchPeers, 15000);
 });
+
+// ── SSE: Real-time transaction stream ────────────────────────────────────────
+
+function setupSSE() {
+    const sseIndicator = document.getElementById('sse-indicator');
+    const livePulse    = document.getElementById('live-pulse');
+
+    function connect() {
+        const token = getAccessToken();
+        if (!token) return;
+
+        // EventSource doesn't support custom headers natively.
+        // Pass token as query param; server reads it from ?token=
+        const url = `/api/stream/transactions?token=${encodeURIComponent(token)}`;
+        const es  = new EventSource(url);
+
+        es.addEventListener('status', (e) => {
+            const d = JSON.parse(e.data || '{}');
+            if (d.type === 'connected') {
+                if (sseIndicator) {
+                    sseIndicator.textContent = '● Live';
+                    sseIndicator.style.color = 'var(--accent-green)';
+                }
+                if (livePulse) livePulse.style.background = 'var(--accent-green)';
+            }
+        });
+
+        es.addEventListener('transaction', (e) => {
+            try {
+                const event = JSON.parse(e.data);
+                if (event.data) {
+                    updateChartsWithNewTx(event.data);
+                    // Show a subtle "P2P" badge if from peer
+                    if (event.source === 'peer') {
+                        showPeerTransactionToast(event.data);
+                    }
+                }
+            } catch (err) {
+                console.error('SSE parse error', err);
+            }
+        });
+
+        es.onerror = () => {
+            if (sseIndicator) {
+                sseIndicator.textContent = '● Reconnecting...';
+                sseIndicator.style.color = 'var(--accent-orange, orange)';
+            }
+            es.close();
+            // Retry after 5 seconds
+            setTimeout(connect, 5000);
+        };
+    }
+
+    connect();
+}
+
+function showPeerTransactionToast(txData) {
+    const tx = txData.classical;
+    if (!tx) return;
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position:fixed; bottom:20px; right:20px; z-index:9999;
+        background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4);
+        border-radius:10px; padding:12px 18px; color:#10b981;
+        font-size:0.85rem; font-family:inherit;
+        box-shadow:0 4px 20px rgba(0,0,0,0.3);
+        animation: fadeIn 0.3s ease;
+    `;
+    toast.innerHTML = `🌐 <strong>P2P Transaction received</strong><br>${tx.sender} → ${tx.receiver}: $${tx.amount?.toFixed(2)}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+}
+
+// ── Peer Panel ────────────────────────────────────────────────────────────────
+
+function setupPeerPanel() {
+    const connectBtn = document.getElementById('btn-connect-peer');
+    const peerStatus = document.getElementById('peer-status');
+
+    if (!connectBtn) return;
+
+    connectBtn.addEventListener('click', async () => {
+        const ip   = (document.getElementById('peer-ip')?.value || '').trim();
+        const port = parseInt(document.getElementById('peer-port')?.value || '5000', 10);
+
+        if (!ip) {
+            showPeerStatus('Enter a peer IP address.', 'error');
+            return;
+        }
+
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Connecting...';
+
+        try {
+            const res = await authFetch('/api/peers/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip_address: ip, port }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showPeerStatus(`Connected to ${ip}:${port}`, 'success');
+                fetchPeers();
+            } else {
+                showPeerStatus(data.error || 'Failed to connect.', 'error');
+            }
+        } catch (e) {
+            showPeerStatus('Network error.', 'error');
+        } finally {
+            connectBtn.disabled = false;
+            connectBtn.textContent = 'Connect';
+        }
+    });
+}
+
+function showPeerStatus(msg, type) {
+    const el = document.getElementById('peer-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `status-message ${type}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+async function fetchPeers() {
+    try {
+        const res = await authFetch('/api/peers');
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        renderPeerList(data.peers || []);
+    } catch { /* silent */ }
+}
+
+function renderPeerList(peers) {
+    const container = document.getElementById('peer-list');
+    if (!container) return;
+
+    if (peers.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); font-size:0.82rem;">No peers connected.</p>';
+        return;
+    }
+
+    container.innerHTML = peers.map(p => `
+        <div style="display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="width:8px; height:8px; border-radius:50%; background:${p.status === 'active' ? 'var(--accent-green)' : '#f87171'}; flex-shrink:0;"></span>
+            <span style="font-size:0.82rem; color:var(--text-primary); flex:1;">${p.hostname || p.ip_address}</span>
+            <span style="font-size:0.75rem; color:var(--text-muted);">${p.ip_address}:${p.port}</span>
+        </div>
+    `).join('');
+}
 
 // Setup Initial Chart.js Instances
 function initCharts() {
@@ -224,7 +450,7 @@ function setupEventListeners() {
         setStatus(statusEl, 'Processing...', 'neutral');
         
         try {
-            const res = await fetch('/api/transaction', {
+            const res = await authFetch('/api/transaction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sender, receiver, amount })
@@ -263,7 +489,7 @@ function setupEventListeners() {
             // Fire 2 transactions every second
             loadInterval = setInterval(() => {
                 const amount = (Math.random() * 1000).toFixed(2);
-                fetch('/api/transaction', {
+                authFetch('/api/transaction', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -271,7 +497,7 @@ function setupEventListeners() {
                         receiver: `DEMO-${Math.floor(Math.random()*1000)}`, 
                         amount: parseFloat(amount) 
                     })
-                }).then(res => res.json()).then(data => {
+                }).then(res => res && res.json()).then(data => {
                     if (!data.error) updateChartsWithNewTx(data);
                 }).catch(e => console.error(e));
             }, 500);
@@ -347,8 +573,8 @@ function updateChartsWithNewTx(txData) {
 async function fetchMetrics() {
     console.debug('Fetching latest aggregated metrics...');
     try {
-        const res = await fetch('/api/metrics?last=50');
-        if (!res.ok) return;
+        const res = await authFetch('/api/metrics?last=50');
+        if (!res || !res.ok) return;
         
         const metrics = await res.json();
         
@@ -447,11 +673,11 @@ function setText(id, value) {
 async function fetchAdvancedAnalytics(timeWindow) {
     try {
         const [migrationRes, rotationRes, comparisonRes, healthRes, anomalyRes] = await Promise.all([
-            fetch(`/api/v1/analytics/migration-status?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch('/api/v1/keys/rotation-health'),
-            fetch(`/api/v1/analytics/algorithm-comparison?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch(`/api/v1/analytics/security-health?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch('/api/v1/analytics/anomalies')
+            authFetch(`/api/v1/analytics/migration-status?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch('/api/v1/keys/rotation-health'),
+            authFetch(`/api/v1/analytics/algorithm-comparison?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch(`/api/v1/analytics/security-health?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch('/api/v1/analytics/anomalies')
         ]);
 
         const [migration, rotation, comparison, health, anomalies] = await Promise.all([

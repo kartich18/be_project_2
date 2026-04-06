@@ -1,6 +1,5 @@
-"""Analytics service for advanced security and migration dashboard metrics."""
-
 from __future__ import annotations
+"""Analytics service for advanced security and migration dashboard metrics."""
 
 from datetime import datetime, timedelta, timezone, date
 import math
