@@ -5,97 +5,135 @@ This document functions as a comprehensive usage guide showing exactly how to la
 ## 1. System Set up & Boot Sequence
 
 ### 1.1 Prerequisites Requirements
-- Ensure **Python 3.11** or greater is available. 
+- Ensure **Python 3.11** or greater is available.
+- Ensure **Node.js** (v18+) and **npm** are installed for the React SPA frontend.
 - Ensure standard C compilation tools are available, which are utilized under the hood by the bundled `liboqs` Post-Quantum libraries.
+- A **NeonDB** account (for production) or local SQLite for development (default).
 
-### 1.2 Initializing The Environment
-1. Clone the project and navigate to the repository's root execution context.
-2. Initialize and activate the isolated virtual environment:
+### 1.2 Initializing The Backend Environment
+
+> All backend commands must be run from inside the **`backend/`** directory.
+
+1. Clone the project and navigate to the `backend/` directory:
+   ```bash
+   cd be_project_2/backend
+   ```
+2. Initialize and activate the Python virtual environment:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
-3. Pull required packages strictly outlined in the configuration manifest:
+3. Install required packages:
    ```bash
    pip install -r requirements.txt
    ```
-4. Create an ad-hoc TLS certificate needed for secure localhost execution:
+4. Configure environment variables in `backend/.env`:
+   ```
+   # Development (SQLite — default)
+   DATABASE_URL=sqlite:///instance/transactions.db
+
+   # Production (NeonDB / PostgreSQL)
+   # DATABASE_URL=postgresql://user:password@ep-name.region.aws.neon.tech/dbname?sslmode=require
+
+   JWT_SECRET_KEY=super-secret-jwt-key
+   FLASK_ENV=development
+   CLIENT_REGISTRATION_SECRET=your-client-secret
+   ```
+5. Apply Database Migrations (schema initialization using Alembic):
    ```bash
-   python scripts/generate_certs.py
+   alembic upgrade head
    ```
-   *This evaluates local IP tables, binds certificates directly avoiding mixed-content block errors dynamically mapping `cert.pem` and `key.pem`.*
-5. Ensure your `.env` contains the keys for the client-server architecture:
-   ```
-   CLIENT_REGISTRATION_SECRET=super-secret-registration-key
-   SERVER_URL=https://127.0.0.1:5000
-   ```
+   *This initializes user schemas, refresh token sessions, audit logs, account models, and user key stores.*
 
 ### 1.3 Launching the Application
-The architecture is split into a central server and multiple connecting clients. 
 
-Execute the **primary central server**:
+The architecture splits into an independent Flask API server and a React SPA frontend. Both must run simultaneously.
+
+**Terminal 1 — Flask API Server:**
 ```bash
+cd backend
 python run_server.py --port 5000
 ```
-*The command line log will indicate the HTTP server is bound exclusively over TLS (`https://`)*.
+*The server acts strictly as a JSON API, serving REST endpoints and SSE streams on `http://localhost:5000`.*
 
-Execute **connected clients** on separate terminals. Provide a unique port and generic ID for demonstration:
+**Terminal 2 — React Frontend:**
 ```bash
-python run_client.py --port 5001 --client-id C1
-python run_client.py --port 5002 --client-id C2
+cd frontend
+npm install
+npm run dev
 ```
+*The Vite dev server starts at `http://localhost:5173` and automatically proxies all `/api/*` calls to the Flask server at port 5000.*
 
 ---
 
 ## 2. Navigating The Front-End Architecture
 
-### 2.1 The Server Dashboard (Global Analytics)
-1. Open your browser to **`https://localhost:5000`**.  
-   *(If prompted by browser SSL security configurations indicating self-signed risk, bypass utilizing **Advanced -> Proceed**)*.
-2. The initial view defaults to an identity assertion requirement via `login.html`.
-3. If no user profiles exist within the default SQL structure, you can bypass front-end forms orchestrating user seed pipelines:
-   ```bash
-   python scripts/create_user.py
-   ```
-   *(This binds a baseline administrator within the SQL structure for JWT provisioning).*
-4. Once authenticated, the browser maps internal JWT definitions caching local sessions while unlocking the expansive visualization overview matrix (`index.html`).
-5. The dashboard presents **Connected Clients** logging live registrations alongside all systemic cryptographic telemetry.
+### 2.1 The Login & Session Infrastructure
+1. Open your browser to **`http://localhost:5173`**.
+2. The initial view renders the React Login component. Register a new account or sign in with an existing one.
+3. Authentication uses a **two-token pattern**: a short-lived access token (15 min) for API calls and a long-lived refresh token stored in the server's `sessions` table. Tokens are auto-refreshed transparently by the API client.
 
-### 2.2 The Client Dashboards (User-Level View) 
-1. Open your browser to the designated client address: **`https://localhost:5001`** (for C1).
-2. The UI limits information rendering only individual transaction data synchronized entirely via background SSE processing.
+### 2.2 Role-Based Dashboards
+Upon authentication, the application routes the user based on their internal role:
 
-### 2.3 Live Transaction Tracking
-1. Open the UI for an authenticated client (e.g. C1 at `https://localhost:5001`).
-2. Notice the dashboard UI contains forms to initiate 'New Transactions'.
-3. Submit a transaction targeted closely to another registered client (Recipient: `C2`, Amount: 500). 
-4. The client will securely ferry the intent context directly towards the centralized Master validation system.
-5. The Master API executes dual-pipeline cryptographic handling executing classical algorithms (RSA-2048) alongside the PQC (ML-KEM-768) process, immediately committing to the central Ledger metrics.
-6. Validated via **Server-Sent Events (SSE)**, the server natively updates its own UI, then isolates routing directly pushing SSE elements back down towards C2 (`sync_service`).
-7. Watch C2's interface reflect the fully complete transaction record silently onto the feed with no active polling or manual refresh required.
+- **Admin (`role=admin`)**: Routed to the **Admin Analytics Dashboard** — full global system telemetry, real-time transaction stream, ML-KEM migration status, algorithm comparison, key rotation health, anomaly detection, and security events.
+- **Viewer (`role=viewer`)**: Routed to the **Client Transactions Dashboard** — isolated personal transaction history updated live via SSE, plus a directory-aware form to send transfers to other registered accounts.
+
+### 2.3 Live Transaction Tracking & Per-User Crypto
+1. Log in via a Viewer account.
+2. Submit a transaction using the send form — select the recipient from the user directory and enter an amount.
+3. Under the hood, the platform runs a **four-pipeline transaction engine**: every transaction is processed simultaneously via Classical RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+4. The transaction is committed to the ledger and transitions through the state machine: `INITIATED → VALIDATED → CRYPTO_PROCESSED → COMMITTED → SETTLED`.
+5. Both the sender and recipient dashboards update live via SSE — no page refresh needed.
+
+### 2.4 Session Management
+- Navigate to the **Sessions** tab in the React SPA.
+- All active login sessions (device, IP, last used) are listed.
+- Individual sessions can be revoked, immediately invalidating that device's refresh token.
 
 ---
 
 ## 3. Demonstrating the "Harvest Now, Decrypt Later" Event Simulation
 
-This isolated interactive module exists to explain the urgent requirement for ML-KEM mapping.
+This isolated interactive module exposes the urgent requirement for ML-KEM mappings utilizing true, per-user live contexts.
 
-1. Via the Central Server's Dashboard navigation, click on the **HNDL Attack Simulation** tab (or direct routing `https://localhost:5000/static/harvest.html`).
-2. Utilize the interactive components initializing the execution. 
+1. Navigate to the **HNDL Attack Simulation** tab in the React SPA.
+2. Use the interactive components to initialize the execution against genuine user transaction artifacts — these are real ciphertexts from live transactions, not synthetic parameters.
 3. Observe the structured sequences:
-   - **Phase 1**: Classical interception. Network footprints record ciphertext captures.
-   - **Phase 2**: Chronological delay modeling Y2Q dependencies.
-   - **Phase 3**: Systemic integration with **Qiskit** processes targeting captured properties resolving underlying algebraic factors representing quantum factorizations executing natively on your CPU returning fully exposed original values in the UI context. 
+   - **Phase 1**: Classical interception. Network footprints record accurate ciphertext captures from RSA-encrypted transactions.
+   - **Phase 2**: Chronological delay modeling Y2Q (Year-to-Quantum) dependencies — the attacker waits.
+   - **Phase 3**: Integration with **Qiskit** processes. Targets the captured RSA ciphertext, resolving underlying algebraic factors. The ML-KEM-encrypted payload remains computationally secure and cannot be broken.
 
 ---
 
 ## 4. Direct Execution of Developer Tooling
 
-Beyond user-interfaces, the system is backed by raw performance profiling tests. Executing these directly aids during backend debugging.
+Beyond the UI, the system is backed by developer scripts for direct performance profiling and administration.
 
-1. Ensure Python's virtual environment is activated correctly. 
-2. Execute the stand-alone statistical analytics CLI pipeline isolating Post-Quantum logic from standard Flask context integrations.
-   ```bash
-   python scripts/benchmark_cli.py
-   ```
-3. Notice the iteration loops processing thousands of rapid ML-KEM Key Generation, Assurances, and Extractions isolating minimum dependencies, reporting precise distribution timings mapped to CLI out and persistent dataset properties.
+> All scripts must be run from inside the **`backend/`** directory with your virtual environment active.
+
+### 4.1 Benchmark CLI
+Execute isolated end-to-end timing benchmarks across all cryptographic pipelines:
+```bash
+python scripts/benchmark_cli.py
+```
+This runs thousands of rapid ML-KEM and RSA key generation and encapsulation cycles, printing timing statistics without requiring the Flask server to be running.
+
+### 4.2 User Creation Utility
+Manually create a user account from the command line (bypassing the web registration form):
+```bash
+python scripts/create_user.py <username> <password> [admin|viewer]
+```
+
+### 4.3 TLS Certificate Generation (Development)
+Generate self-signed TLS certificates for local HTTPS testing:
+```bash
+python scripts/generate_certs.py
+```
+The generated `cert.pem` and `key.pem` files should be placed in the `infra/certs/` directory. `run_server.py` picks them up automatically.
+
+### 4.4 Running the Test Suite
+Execute the full pytest test suite from the `backend/` directory. Test logs are automatically written to `../logs/pytest.log`:
+```bash
+pytest
+```
