@@ -51,6 +51,7 @@ class Transaction(db.Model):
     # extended analytics metadata (non-breaking, optional)
     latency_bucket = db.Column(db.String(32), nullable=True)
     failure_reason = db.Column(db.String(255), nullable=True)
+    origin_ip      = db.Column(db.String(45), nullable=True)  # LAN IP of originating peer
 
     # status
     status = db.Column(db.String(16), nullable=False, default="success")
@@ -80,6 +81,7 @@ class Transaction(db.Model):
             "ciphertext_size_bytes": self.ciphertext_size_bytes,
             "latency_bucket": self.latency_bucket,
             "failure_reason": self.failure_reason,
+            "origin_ip":      self.origin_ip,
             "status": self.status,
         }
 

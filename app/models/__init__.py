@@ -6,6 +6,8 @@ from app.models.daily_migration_snapshot import DailyMigrationSnapshot
 from app.models.security_event import SecurityEvent
 from app.models.anomaly import Anomaly
 from app.models.key_rotation_audit import KeyRotationAudit
+from app.models.user import User
+from app.models.client import Client     # new: client-server era
 
 __all__ = [
 	"Transaction",
@@ -14,4 +16,6 @@ __all__ = [
 	"SecurityEvent",
 	"Anomaly",
 	"KeyRotationAudit",
+	"User",
+	"Client",
 ]

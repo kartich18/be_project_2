@@ -1,7 +1,50 @@
-venv/
+# Byte-compiled / optimized / DLL files
 __pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Database
 *.db
-*.pyc
+*.sqlite3
+
+# Logs
+*.log
+app.log
+
+# Generated Runtime Artifacts
+*.pem
+stolen_database.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
 .DS_Store
-instance/
-static/uploads/
+Thumbs.db
+
+# Environment variables
+.env
+.flaskenv
+
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage
+
+# liboqs build artifacts
+liboqs/

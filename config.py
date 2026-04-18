@@ -2,8 +2,22 @@
 Central configuration for the Quantum-Safe Banking Transaction PoC.
 """
 import os
+import socket
+from datetime import timedelta
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _get_lan_ip() -> str:
+    """Best-effort detection of the machine's LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
 
 
 class Config:
@@ -16,7 +30,7 @@ class Config:
 
     # Database
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'transactions.db')}"
+        "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'transactions.db')}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
@@ -34,6 +48,29 @@ class Config:
     # Logging
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
     LOG_FILE = os.path.join(BASE_DIR, "app.log")
+
+    # ── JWT Authentication ────────────────────────────────────────────────
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "jwt-dev-secret-change-in-production")
+    JWT_ACCESS_TOKEN_EXPIRES  = timedelta(minutes=15)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
+    JWT_TOKEN_LOCATION = ["headers"]
+    JWT_HEADER_NAME    = "Authorization"
+    JWT_HEADER_TYPE    = "Bearer"
+
+    # ── Client Registration ───────────────────────────────────────────────
+    # Shared secret used by client nodes to auto-register with the server
+    CLIENT_REGISTRATION_SECRET = os.environ.get("CLIENT_REGISTRATION_SECRET", "client-reg-secret-change-in-production")
+
+    # ── Server URL (used by client launchers to locate the central server) ─
+    SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000")
+
+    # ── TLS ───────────────────────────────────────────────────────────────
+    TLS_CERT = os.path.join(BASE_DIR, "cert.pem")
+    TLS_KEY  = os.path.join(BASE_DIR, "key.pem")
+
+    # ── Node Identity ─────────────────────────────────────────────────────
+    NODE_PORT = int(os.environ.get("NODE_PORT", 5000))
+    NODE_IP   = os.environ.get("NODE_IP", _get_lan_ip())
 
 
 class DevelopmentConfig(Config):

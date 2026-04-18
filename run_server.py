@@ -1,20 +1,17 @@
 """
-Application entry point for the Quantum-Safe Banking Transaction PoC.
+run_server.py — Central server launcher.
 
 Usage:
-    python run.py
+    python run_server.py [--port 5000]
 
-TLS:
-    Generate certs first:  python scripts/generate_certs.py
-    The server then starts on https://0.0.0.0:5000 using self-signed TLS.
-    Peer nodes connect via: https://<this-machine-LAN-IP>:5000
+This is functionally equivalent to the original run.py but explicitly named
+to distinguish it from the client launcher in the new client-server topology.
 """
+import argparse
 import os
 import socket
 
 from app import create_app
-
-app = create_app()
 
 
 def _get_lan_ip() -> str:
@@ -28,29 +25,34 @@ def _get_lan_ip() -> str:
         return "127.0.0.1"
 
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="Quantum-Safe Banking — Central Server")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("NODE_PORT", 5000)),
+                        help="Port to listen on (default: 5000)")
+    args = parser.parse_args()
+
+    app = create_app()
+
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     cert = os.path.join(BASE_DIR, "cert.pem")
     key  = os.path.join(BASE_DIR, "key.pem")
 
     lan_ip = _get_lan_ip()
-    port   = int(os.environ.get("NODE_PORT", 5000))
+    port   = args.port
 
     if os.path.exists(cert) and os.path.exists(key):
         ssl_ctx = (cert, key)
         scheme  = "https"
         print("\n┌─────────────────────────────────────────────────────────┐")
-        print("│       Quantum-Safe Banking Node  [TLS ENABLED]          │")
+        print("│    Quantum-Safe Banking — Central Server [TLS ENABLED] │")
         print("├─────────────────────────────────────────────────────────┤")
-        print(f"│  Local    : https://127.0.0.1:{port}                      │")
-        print(f"│  LAN URL  : https://{lan_ip}:{port}                  │")
-        print(f"│  Share the LAN URL with peer nodes on the same network  │")
+        print(f"│  Local  : https://127.0.0.1:{port}                        │")
+        print(f"│  LAN    : https://{lan_ip}:{port}                    │")
         print("└─────────────────────────────────────────────────────────┘\n")
     else:
         ssl_ctx = None
         scheme  = "http"
-        print("\n⚠️  TLS certs not found — running in HTTP mode.")
-        print("   Generate certs with:  python scripts/generate_certs.py\n")
+        print(f"\n⚠️  TLS certs not found — running in HTTP mode.")
         print(f"   Local  : http://127.0.0.1:{port}")
         print(f"   LAN    : http://{lan_ip}:{port}\n")
 
@@ -61,3 +63,6 @@ if __name__ == "__main__":
         ssl_context=ssl_ctx,
     )
 
+
+if __name__ == "__main__":
+    main()

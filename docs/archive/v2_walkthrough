@@ -1,0 +1,37 @@
+# Quantum-Safe Banking Expansion Complete
+
+We have successfully expanded the Quantum-Safe Banking internal system to run as a fully networked Proof of Concept (PoC). The project now supports secure Peer-to-Peer interactions across a local network with TLS, role-based JWT authentication, and HMAC-verified P2P node transactions broadcasted seamlessly in real-time.
+
+## Key Changes and Implementation Details
+
+- **Foundation and Transport (TLS & Dependencies)**
+  - Enhanced dependencies with Flask-JWT-Extended, pyOpenSSL, bcrypt, and Requests.
+  - Implemented `scripts/generate_certs.py` to seamlessly auto-generate self-signed CA certificates on startup bound directly to your local machines LAN IP address.
+  - Secured transport endpoints running on `HTTPS://` enabled via the new SSL context.
+
+- **User Authentication Layer**
+  - Secured private dashboards and analytics streams with the `flask_jwt_extended` integration.
+  - Built an overarching Flask application `@app.before_request` hook serving as a global auth guard forcing authorization across analytical backend operations. 
+  - Overhauled dashboard web-design presenting a beautiful, modern **Glassmorphism-themed Login Portal** that intercepts browser sessions routing to private dashboards on completion. Dashboard API polling hooks seamlessly intercept token refreshes across operations using an `authFetch()` wrapper.
+
+- **P2P Integration and Node Validation**
+  - Hand-crafted an independent authentication model scaling the `HMAC-SHA256` hashing logic. Nodes on the same LAN share the `PEER_HMAC_SECRET` which explicitly prevents unauthorized transaction seeding by simulating zero-trust environment handshakes using the payload and unique ISO-timestamp boundaries to avoid payload replay-attacks.
+  - Built out the new `PeerService` with continuous heartbeats and endpoints dedicated for mutual peer synchronization out of `app/routes/peer.py`.
+
+- **Decentralized Transaction & Real-time Delivery (Server-Sent Events / SSE)**
+  - Integrated the python native memory-efficient queues building out the `EventBus` class serving as robust singleton thread-safe Event Sourcing.
+  - Transactions posted onto an individual node now traverse vertically into individual databases and horizontally to connected sibling nodes. Sibling nodes mirror the operations storing locally using `origin_ip` routing tracking capabilities. 
+  - Designed the `/api/stream/transactions` endpoint routing pure stream generators to the browser.
+  - Connected browser interfaces natively onto Server-Sent Events natively avoiding bloated API polling logic. User dashboards feature a beautiful *System Live* tracking pulse displaying real connections and dynamic *toast* drop-ins rendering transactions populated by external networking nodes.
+
+## Verifying on the Development Server
+
+The development system has successfully initialized!
+
+You can boot your server locally via running:
+```bash
+python scripts/generate_certs.py
+python run.py 
+```
+
+Visit [https://localhost:5000](https://localhost:5000). A warning will flash regarding the self-signed certification standardly displayed for browser-side developer certs, accept using **Advanced \> Proceed** and you'll be greeted by your new login interface!

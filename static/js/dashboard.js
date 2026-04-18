@@ -2,7 +2,79 @@
  * dashboard.js
  * Handles data fetching, transaction submission, and Chart.js rendering for the PQC Dashboard.
  * Supports RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+ *
+ * Auth: All API calls use JWT Bearer tokens via authFetch(). On 401 → redirect to /login.
  */
+
+// ── Auth helpers ────────────────────────────────────────────────────────────
+
+function getAccessToken() {
+    return localStorage.getItem('access_token');
+}
+
+async function refreshAccessToken() {
+    const refresh = localStorage.getItem('refresh_token');
+    if (!refresh) return null;
+    try {
+        const res = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${refresh}` },
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        localStorage.setItem('access_token', data.access_token);
+        return data.access_token;
+    } catch { return null; }
+}
+
+/** Fetch wrapper that automatically attaches JWT and handles 401 token refresh. */
+async function authFetch(url, options = {}) {
+    let token = getAccessToken();
+    if (!token) { window.location.replace('/login'); return; }
+
+    const headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    let res = await fetch(url, { ...options, headers });
+
+    // Try to refresh once on 401
+    if (res.status === 401) {
+        token = await refreshAccessToken();
+        if (!token) { window.location.replace('/login'); return; }
+        headers['Authorization'] = `Bearer ${token}`;
+        res = await fetch(url, { ...options, headers });
+        if (res.status === 401) { window.location.replace('/login'); return; }
+    }
+    return res;
+}
+
+// ── Auth guard on load ───────────────────────────────────────────────────────
+
+(function checkAuth() {
+    if (!getAccessToken()) {
+        window.location.replace('/login');
+    }
+    // Show username in header
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const el = document.getElementById('header-username');
+        if (el && user.username) el.textContent = `👤 ${user.username}`;
+    } catch { /* ignore */ }
+})();
+
+// Logout
+document.addEventListener('DOMContentLoaded', () => {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await authFetch('/api/auth/logout', { method: 'POST' });
+            } catch { /* ignore */ }
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+            window.location.replace('/login');
+        });
+    }
+});
 
 // Globals
 let latencyChart, perfChart, sizeChart;
@@ -38,15 +110,129 @@ function methodBadgeClass(method) {
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
     setupEventListeners();
-    
+    setupSSE();
+
     // Initial fetch
     fetchMetrics();
     fetchAdvancedAnalytics(getSelectedWindow());
+    fetchClients();
 
-    // Start regular polling
-    setInterval(fetchMetrics, 2000);
-    setInterval(() => fetchAdvancedAnalytics(getSelectedWindow()), 5000);
+    // Polling fallback
+    setInterval(fetchMetrics, 5000);
+    setInterval(() => fetchAdvancedAnalytics(getSelectedWindow()), 10000);
+    setInterval(fetchClients, 10000);
 });
+
+// ── SSE: Real-time transaction stream ────────────────────────────────────────
+
+function setupSSE() {
+    const sseIndicator = document.getElementById('sse-indicator');
+    const livePulse    = document.getElementById('live-pulse');
+
+    function connect() {
+        const token = getAccessToken();
+        if (!token) return;
+
+        // EventSource doesn't support custom headers natively.
+        // Pass token as query param; server reads it from ?token=
+        const url = `/api/stream/transactions?token=${encodeURIComponent(token)}`;
+        const es  = new EventSource(url);
+
+        es.addEventListener('status', (e) => {
+            const d = JSON.parse(e.data || '{}');
+            if (d.type === 'connected') {
+                if (sseIndicator) {
+                    sseIndicator.textContent = '● Live';
+                    sseIndicator.style.color = 'var(--accent-green)';
+                }
+                if (livePulse) livePulse.style.background = 'var(--accent-green)';
+            }
+        });
+
+        es.addEventListener('transaction', (e) => {
+            try {
+                const event = JSON.parse(e.data);
+                if (event.data) {
+                    updateChartsWithNewTx(event.data);
+                    showServerTransactionToast(event.data);
+                }
+            } catch (err) {
+                console.error('SSE parse error', err);
+            }
+        });
+
+        es.onerror = () => {
+            if (sseIndicator) {
+                sseIndicator.textContent = '● Reconnecting...';
+                sseIndicator.style.color = 'var(--accent-orange, orange)';
+            }
+            es.close();
+            // Retry after 5 seconds
+            setTimeout(connect, 5000);
+        };
+    }
+
+    connect();
+}
+
+function showServerTransactionToast(txData) {
+    const tx = txData.classical;
+    if (!tx) return;
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position:fixed; bottom:20px; right:20px; z-index:9999;
+        background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4);
+        border-radius:10px; padding:12px 18px; color:#10b981;
+        font-size:0.85rem; font-family:inherit;
+        box-shadow:0 4px 20px rgba(0,0,0,0.3);
+        animation: fadeIn 0.3s ease;
+    `;
+    toast.innerHTML = `🖥 <strong>Transaction processed</strong><br>${tx.sender} → ${tx.receiver}: $${tx.amount?.toFixed(2)}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+}
+
+// ── Connected Clients Panel ──────────────────────────────────────────────────
+
+async function fetchClients() {
+    try {
+        const res = await authFetch('/api/clients');
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        renderClientList(data.clients || []);
+    } catch { /* silent */ }
+}
+
+function renderClientList(clients) {
+    const container = document.getElementById('client-list');
+    if (!container) return;
+
+    if (clients.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); font-size:0.82rem;">No clients registered.</p>';
+        return;
+    }
+
+    container.innerHTML = clients.map(c => {
+        const isOnline = c.status === 'online';
+        const dotColor = isOnline ? 'var(--accent-green)' : '#f87171';
+        const lastSeen = c.last_seen
+            ? new Date(c.last_seen).toLocaleTimeString()
+            : 'never';
+        return `
+        <div style="display:flex; align-items:center; gap:8px; padding:7px 0;
+                    border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="width:8px; height:8px; border-radius:50%;
+                         background:${dotColor}; flex-shrink:0;
+                         ${isOnline ? 'box-shadow:0 0 6px ' + dotColor : ''}"></span>
+            <span style="font-size:0.85rem; color:var(--text-primary); flex:1; font-weight:500;">
+                ${c.client_id}
+            </span>
+            <span style="font-size:0.73rem; color:var(--text-muted);">:${c.port}</span>
+            <span style="font-size:0.73rem; color:${isOnline ? 'var(--accent-green)' : 'var(--text-muted)'};"
+                  title="Last seen ${lastSeen}">${isOnline ? 'online' : 'offline'}</span>
+        </div>`;
+    }).join('');
+}
 
 // Setup Initial Chart.js Instances
 function initCharts() {
@@ -210,41 +396,6 @@ function initCharts() {
 
 // Event Listeners for Forms and Buttons
 function setupEventListeners() {
-    const txForm = document.getElementById('tx-form');
-    txForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const sender = document.getElementById('sender').value;
-        const receiver = document.getElementById('receiver').value;
-        const amount = parseFloat(document.getElementById('amount').value);
-        
-        console.log(`Submitting transaction: Sender=${sender}, Receiver=${receiver}, Amount=${amount}`);
-        
-        const statusEl = document.getElementById('tx-status');
-        setStatus(statusEl, 'Processing...', 'neutral');
-        
-        try {
-            const res = await fetch('/api/transaction', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sender, receiver, amount })
-            });
-            
-            const data = await res.json();
-            if (res.ok) {
-                const txId = data.classical ? String(data.classical.id) : "Unknown";
-                setStatus(statusEl, `Success! Tx-ID: ${txId}`, 'success');
-                // Trigger immediate update
-                fetchMetrics(); 
-                updateChartsWithNewTx(data);
-            } else {
-                setStatus(statusEl, `Error: ${data.error}`, 'error');
-            }
-        } catch (error) {
-            setStatus(statusEl, 'Network error occurred.', 'error');
-        }
-    });
-
     const loadBtn = document.getElementById('btn-load-test');
     let loadTestRunning = false;
     let loadInterval;
@@ -263,7 +414,7 @@ function setupEventListeners() {
             // Fire 2 transactions every second
             loadInterval = setInterval(() => {
                 const amount = (Math.random() * 1000).toFixed(2);
-                fetch('/api/transaction', {
+                authFetch('/api/transaction', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -271,7 +422,7 @@ function setupEventListeners() {
                         receiver: `DEMO-${Math.floor(Math.random()*1000)}`, 
                         amount: parseFloat(amount) 
                     })
-                }).then(res => res.json()).then(data => {
+                }).then(res => res && res.json()).then(data => {
                     if (!data.error) updateChartsWithNewTx(data);
                 }).catch(e => console.error(e));
             }, 500);
@@ -347,8 +498,8 @@ function updateChartsWithNewTx(txData) {
 async function fetchMetrics() {
     console.debug('Fetching latest aggregated metrics...');
     try {
-        const res = await fetch('/api/metrics?last=50');
-        if (!res.ok) return;
+        const res = await authFetch('/api/metrics?last=50');
+        if (!res || !res.ok) return;
         
         const metrics = await res.json();
         
@@ -447,11 +598,11 @@ function setText(id, value) {
 async function fetchAdvancedAnalytics(timeWindow) {
     try {
         const [migrationRes, rotationRes, comparisonRes, healthRes, anomalyRes] = await Promise.all([
-            fetch(`/api/v1/analytics/migration-status?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch('/api/v1/keys/rotation-health'),
-            fetch(`/api/v1/analytics/algorithm-comparison?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch(`/api/v1/analytics/security-health?time_window=${encodeURIComponent(timeWindow)}`),
-            fetch('/api/v1/analytics/anomalies')
+            authFetch(`/api/v1/analytics/migration-status?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch('/api/v1/keys/rotation-health'),
+            authFetch(`/api/v1/analytics/algorithm-comparison?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch(`/api/v1/analytics/security-health?time_window=${encodeURIComponent(timeWindow)}`),
+            authFetch('/api/v1/analytics/anomalies')
         ]);
 
         const [migration, rotation, comparison, health, anomalies] = await Promise.all([

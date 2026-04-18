@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 
 from app.services.analytics_service import AnalyticsService
 from app.services.transaction_service import TransactionService
+from app.utils.auth_helpers import token_required
 from app.utils.helpers import validate_transaction_payload
 from app.utils.logger import logger
 
@@ -15,6 +16,7 @@ transaction_bp = Blueprint("transaction", __name__)
 
 
 @transaction_bp.route("/transaction", methods=["POST"])
+@token_required
 def create_transaction():
     """Process a banking transaction through both crypto pipelines.
 
@@ -41,7 +43,8 @@ def create_transaction():
         return jsonify({"error": error_msg}), 400
 
     try:
-        result = TransactionService.process_transaction(data)
+        origin_ip = request.remote_addr
+        result = TransactionService.process_transaction(data, origin_ip=origin_ip)
         return jsonify(result), 201
     except Exception as exc:  # noqa: BLE001
         logger.exception("Transaction processing failed: %s", exc)
@@ -54,3 +57,6 @@ def create_transaction():
                 error_message=str(exc),
             )
         return jsonify({"error": "Internal server error"}), 500
+
+
+

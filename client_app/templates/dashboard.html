@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ client_id }} Dashboard — Quantum-Safe Bank</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* ── Client-specific overrides ───────────────────────────────── */
+        .client-header-badge {
+            background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 20px; padding: 4px 14px;
+            font-size: 0.8rem; font-weight: 600; color: #a5b4fc;
+            letter-spacing: 0.04em;
+        }
+        .tx-form-card { background: rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+            border-radius:16px; padding:28px; margin-bottom:20px; }
+        .tx-form-card h2 { margin:0 0 20px; font-size:1.1rem; font-weight:600; }
+        .input-row { display:flex; gap:12px; margin-bottom:14px; }
+        .input-row .input-group { flex:1; }
+        .input-group label { display:block; font-size:0.78rem; font-weight:500;
+            color:var(--text-muted); margin-bottom:5px; }
+        .input-group input {
+            width:100%; box-sizing:border-box;
+            background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+            border-radius:8px; padding:11px 13px;
+            color:var(--text-primary); font-family:inherit; font-size:0.95rem; outline:none;
+            transition:border-color 0.2s;
+        }
+        .input-group input:focus { border-color:rgba(99,102,241,0.6); }
+        .send-btn {
+            width:100%; padding:13px; border:none; border-radius:8px; cursor:pointer;
+            background:linear-gradient(135deg,#6366f1,#8b5cf6);
+            color:#fff; font-family:inherit; font-size:1rem; font-weight:600;
+            transition:opacity 0.2s, transform 0.15s; margin-top:4px;
+        }
+        .send-btn:hover { opacity:0.88; transform:translateY(-1px); }
+        .send-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+
+        /* ── Live feed ───────────────────────────────────────────────── */
+        .live-panel { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+            border-radius:16px; padding:20px; }
+        .live-panel h2 { margin:0 0 14px; font-size:1rem; font-weight:600;
+            display:flex; align-items:center; gap:8px; }
+        .sse-dot { width:8px; height:8px; border-radius:50%;
+            background:#34d399; box-shadow:0 0 8px #34d39980; animation:pulse-dot 1.5s infinite; }
+        .sse-dot.disconnected { background:#f87171; box-shadow:0 0 8px #f8717180; animation:none; }
+        @keyframes pulse-dot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.3);opacity:0.6} }
+
+        .feed-item {
+            display:flex; align-items:flex-start; gap:12px;
+            padding:10px 12px; border-radius:8px; margin-bottom:8px;
+            background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);
+            animation:slideIn 0.3s ease;
+        }
+        @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+        .feed-direction { font-size:1.2rem; }
+        .feed-body { flex:1; }
+        .feed-title { font-size:0.88rem; font-weight:600; color:var(--text-primary); }
+        .feed-sub   { font-size:0.76rem; color:var(--text-muted); margin-top:2px; }
+        .feed-amount { font-weight:700; }
+        .badge-sent { color:#f59e0b; }
+        .badge-recv { color:#34d399; }
+
+        /* ── History table ───────────────────────────────────────────── */
+        .history-panel { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+            border-radius:16px; padding:20px; margin-top:20px; }
+        .history-panel h2 { margin:0 0 14px; font-size:1rem; font-weight:600; }
+        .tx-tbl { width:100%; border-collapse:collapse; font-size:0.82rem; }
+        .tx-tbl th { text-align:left; color:var(--text-muted); font-weight:500;
+            padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.07); }
+        .tx-tbl td { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.04);
+            color:var(--text-primary); }
+        .tx-tbl tr:hover td { background:rgba(255,255,255,0.03); }
+        .dir-badge {
+            display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:600;
+        }
+        .dir-sent { background:rgba(245,158,11,0.15); color:#f59e0b; }
+        .dir-received { background:rgba(52,211,153,0.15); color:#34d399; }
+        .status-ok  { color:#34d399; } .status-err { color:#f87171; }
+
+        /* ── Stats row ───────────────────────────────────────────────── */
+        .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+        .stat-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px; padding:16px 18px; text-align:center; }
+        .stat-value { font-size:1.5rem; font-weight:700; color:var(--text-primary); }
+        .stat-label { font-size:0.73rem; color:var(--text-muted); margin-top:3px; }
+
+        /* ── Status message ──────────────────────────────────────────── */
+        .tx-status { margin-top:12px; padding:10px 14px; border-radius:8px;
+            font-size:0.85rem; display:none; }
+        .tx-status.ok  { background:rgba(52,211,153,0.1); color:#34d399; border:1px solid rgba(52,211,153,0.25); }
+        .tx-status.err { background:rgba(248,113,113,0.1); color:#f87171; border:1px solid rgba(248,113,113,0.25); }
+    </style>
+</head>
+<body>
+<div class="app-container">
+
+    <!-- Header -->
+    <header class="glass-header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <h1>Quantum-Safe Bank</h1>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span class="client-header-badge">CLIENT · {{ client_id }}</span>
+                <span id="sse-status" style="font-size:0.78rem; color:var(--text-muted);">(connecting…)</span>
+            </div>
+            <nav style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+                <span style="font-size:0.82rem; color:var(--text-muted);">{{ username }}</span>
+                <form method="POST" action="/logout" style="margin:0;">
+                    <button type="submit"
+                        style="background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.3);
+                               color:#f87171; padding:5px 12px; border-radius:6px;
+                               font-size:0.85rem; font-weight:600; cursor:pointer; font-family:inherit;">
+                        Logout
+                    </button>
+                </form>
+            </nav>
+        </div>
+    </header>
+
+    <main style="max-width:1200px; margin:28px auto; padding:0 24px; display:grid;
+                 grid-template-columns:420px 1fr; gap:24px; align-items:start;">
+
+        <!-- Left: Send Transaction -->
+        <div>
+            <div class="tx-form-card">
+                <h2>⚡ Send Transaction</h2>
+                <form id="tx-form">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>From (you)</label>
+                            <input type="text" value="{{ client_id }}" readonly
+                                   style="opacity:0.6; cursor:not-allowed;">
+                        </div>
+                        <div class="input-group">
+                            <label for="receiver">To (Client ID)</label>
+                            <input type="text" id="receiver" placeholder="e.g. C2" required>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label for="amount">Amount</label>
+                            <input type="number" id="amount" value="500" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="input-group">
+                            <label for="currency">Currency</label>
+                            <input type="text" id="currency" value="INR" maxlength="4">
+                        </div>
+                    </div>
+                    <button type="submit" class="send-btn" id="send-btn">🔐 Secure Transfer</button>
+                    <div class="tx-status" id="tx-status"></div>
+                </form>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">{{ transactions|length }}</div>
+                    <div class="stat-label">Total Transactions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-sent">
+                        {{ transactions | selectattr('direction','equalto','sent') | list | length }}
+                    </div>
+                    <div class="stat-label">Sent</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-recv">
+                        {{ transactions | selectattr('direction','equalto','received') | list | length }}
+                    </div>
+                    <div class="stat-label">Received</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Live Feed -->
+        <div>
+            <div class="live-panel">
+                <h2>
+                    <span class="sse-dot disconnected" id="sse-dot"></span>
+                    Live Transaction Feed
+                </h2>
+                <div id="live-feed">
+                    <p style="color:var(--text-muted); font-size:0.82rem;">Waiting for events…</p>
+                </div>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="history-panel">
+                <h2>📋 Transaction History</h2>
+                <div style="overflow-x:auto;">
+                    <table class="tx-tbl" id="tx-history">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Direction</th>
+                                <th>Counterparty</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Latency</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tx-body">
+                            {% for tx in transactions %}
+                            <tr>
+                                <td style="white-space:nowrap; font-size:0.75rem; color:var(--text-muted);">
+                                    {{ tx.received_at[:19].replace('T',' ') if tx.received_at else '—' }}
+                                </td>
+                                <td>
+                                    <span class="dir-badge dir-{{ tx.direction }}">{{ tx.direction }}</span>
+                                </td>
+                                <td>
+                                    {% if tx.direction == 'sent' %}{{ tx.receiver }}
+                                    {% else %}{{ tx.sender }}{% endif %}
+                                </td>
+                                <td><strong>{{ tx.currency }} {{ tx.amount }}</strong></td>
+                                <td style="font-size:0.75rem;">{{ tx.crypto_method or '—' }}</td>
+                                <td style="font-size:0.75rem;">
+                                    {{ '%.1f ms'|format(tx.total_time_ms) if tx.total_time_ms else '—' }}
+                                </td>
+                                <td class="{{ 'status-ok' if tx.status == 'success' else 'status-err' }}">
+                                    {{ tx.status }}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="7" style="color:var(--text-muted); text-align:center; padding:20px;">
+                                No transactions yet.
+                            </td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+const CLIENT_ID = "{{ client_id }}";
+let sentCount = parseInt(document.getElementById('stat-sent').textContent) || 0;
+let recvCount = parseInt(document.getElementById('stat-recv').textContent) || 0;
+
+// ── Transaction form ─────────────────────────────────────────────────────────
+document.getElementById('tx-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn    = document.getElementById('send-btn');
+    const status = document.getElementById('tx-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Processing…';
+    status.style.display = 'none';
+
+    const resp = await fetch('/transaction', {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            receiver: document.getElementById('receiver').value.trim(),
+            amount:   parseFloat(document.getElementById('amount').value),
+            currency: document.getElementById('currency').value.trim() || 'INR',
+        }),
+    });
+
+    const body = await resp.json().catch(() => ({}));
+    if (resp.status === 201) {
+        status.className = 'tx-status ok';
+        const c = body.classical || {};
+        status.textContent =
+            `✓ Sent to ${c.receiver || '?'} · ${c.currency} ${c.amount} ` +
+            `· ${(c.total_time_ms || 0).toFixed(1)} ms total`;
+        status.style.display = 'block';
+        sentCount++; updateStats();
+        prependHistoryRow(body.classical, 'sent');
+    } else {
+        status.className = 'tx-status err';
+        status.textContent = '✗ ' + (body.error || 'Transfer failed');
+        status.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.textContent = '🔐 Secure Transfer';
+});
+
+function updateStats() {
+    document.getElementById('stat-total').textContent = sentCount + recvCount;
+    document.getElementById('stat-sent').textContent  = sentCount;
+    document.getElementById('stat-recv').textContent  = recvCount;
+}
+
+function prependHistoryRow(tx, direction) {
+    if (!tx) return;
+    const tbody = document.getElementById('tx-body');
+    // Remove placeholder row if present
+    const placeholder = tbody.querySelector('td[colspan]');
+    if (placeholder) placeholder.parentElement.remove();
+
+    const dt   = new Date().toISOString().slice(0,19).replace('T',' ');
+    const cp   = direction === 'sent' ? tx.receiver : tx.sender;
+    const cls  = direction === 'sent' ? 'dir-sent' : 'dir-received';
+    const stcl = tx.status === 'success' ? 'status-ok' : 'status-err';
+    const lat  = tx.total_time_ms ? tx.total_time_ms.toFixed(1) + ' ms' : '—';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td style="white-space:nowrap;font-size:0.75rem;color:var(--text-muted);">${dt}</td>
+        <td><span class="dir-badge ${cls}">${direction}</span></td>
+        <td>${cp || '—'}</td>
+        <td><strong>${tx.currency} ${tx.amount}</strong></td>
+        <td style="font-size:0.75rem;">${tx.crypto_method || '—'}</td>
+        <td style="font-size:0.75rem;">${lat}</td>
+        <td class="${stcl}">${tx.status}</td>
+    `;
+    tr.style.animation = 'slideIn 0.3s ease';
+    tbody.insertBefore(tr, tbody.firstChild);
+}
+
+// ── SSE live feed ────────────────────────────────────────────────────────────
+function startSSE() {
+    const feed = document.getElementById('live-feed');
+    const dot  = document.getElementById('sse-dot');
+    const lbl  = document.getElementById('sse-status');
+
+    const es = new EventSource('/stream');
+
+    es.addEventListener('status', (e) => {
+        const data = JSON.parse(e.data);
+        if (data.type === 'connected') {
+            dot.classList.remove('disconnected');
+            lbl.textContent = 'Live';
+        }
+    });
+
+    es.addEventListener('transaction', (e) => {
+        const payload = JSON.parse(e.data);
+        const tx = (payload.data && payload.data.classical) ? payload.data.classical : payload.data;
+        if (!tx) return;
+
+        // Add to live feed
+        const item = document.createElement('div');
+        item.className = 'feed-item';
+        const amt = `${tx.currency} ${tx.amount}`;
+        item.innerHTML = `
+            <span class="feed-direction badge-recv">⬇</span>
+            <div class="feed-body">
+                <div class="feed-title badge-recv">Incoming from ${tx.sender}</div>
+                <div class="feed-sub">
+                    <span class="feed-amount">${amt}</span> ·
+                    ${(tx.total_time_ms || 0).toFixed(1)} ms · ${tx.crypto_method || ''}
+                </div>
+            </div>
+        `;
+        // Prepend and limit feed to 10 items
+        if (feed.children.length === 1 && feed.querySelector('p')) feed.innerHTML = '';
+        feed.insertBefore(item, feed.firstChild);
+        while (feed.children.length > 10) feed.removeChild(feed.lastChild);
+
+        // Also add to history table
+        recvCount++;
+        updateStats();
+        prependHistoryRow(tx, 'received');
+    });
+
+    es.onerror = () => {
+        dot.classList.add('disconnected');
+        lbl.textContent = '(reconnecting…)';
+    };
+}
+
+startSSE();
+</script>
+</body>
+</html>
