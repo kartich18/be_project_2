@@ -12,6 +12,7 @@ from flask import Blueprint, Response, current_app, request, stream_with_context
 from flask_jwt_extended import decode_token
 
 from app.services.event_bus import EventBus
+from app.services.notification_service import NotificationService
 from app.utils.auth_helpers import token_required
 from functools import wraps
 
@@ -36,6 +37,8 @@ def query_token_required(fn):
         try:
             decode_token(token)
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             from flask import jsonify
             return jsonify({"error": "Invalid token", "detail": str(exc)}), 401
         return fn(*args, **kwargs)
@@ -113,5 +116,48 @@ def stream_status():
             "Cache-Control":      "no-cache",
             "X-Accel-Buffering":  "no",
             "Connection":         "keep-alive",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-client SSE (routed — only events for this client_id)
+# ---------------------------------------------------------------------------
+
+def _client_sse_generator(client_id: str):
+    """Generator that yields SSE events routed to a specific client_id."""
+    q = NotificationService.connect(client_id)
+    NotificationService.mark_online_in_db(client_id)
+    try:
+        yield _format_sse({"type": "connected", "client_id": client_id}, "status")
+        while True:
+            try:
+                event = q.get(timeout=20)
+                yield _format_sse(event, event.get("type", "message"))
+            except queue.Empty:
+                yield ": keepalive\n\n"
+    except GeneratorExit:
+        pass
+    finally:
+        NotificationService.disconnect(client_id, q)
+        NotificationService.mark_offline_in_db(client_id)
+
+
+@stream_bp.route("/stream/client/<client_id>")
+@query_token_required
+def stream_client(client_id: str):
+    """
+    Per-client SSE endpoint — pushes events addressed only to ``client_id``.
+
+    The client app's ``routes/stream.py`` connects here and re-streams
+    events to the browser.
+    """
+    return Response(
+        stream_with_context(_client_sse_generator(client_id)),
+        content_type="text/event-stream",
+        headers={
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
         },
     )

@@ -38,7 +38,7 @@ def create_app(config_class=None):
     from app.routes.harvest import harvest_bp
     from app.routes.analytics import analytics_bp
     from app.routes.keys import keys_bp
-    from app.routes.peer import peer_bp
+    from app.routes.clients import clients_bp
 
     app.register_blueprint(auth_bp,        url_prefix="/api")
     app.register_blueprint(transaction_bp, url_prefix="/api")
@@ -46,7 +46,7 @@ def create_app(config_class=None):
     app.register_blueprint(harvest_bp,     url_prefix="/api")
     app.register_blueprint(analytics_bp,   url_prefix="/api")
     app.register_blueprint(keys_bp,        url_prefix="/api")
-    app.register_blueprint(peer_bp,        url_prefix="/api")
+    app.register_blueprint(clients_bp,     url_prefix="/api")
 
     from app.routes.stream import stream_bp
     app.register_blueprint(stream_bp,      url_prefix="/api")
@@ -69,8 +69,9 @@ def create_app(config_class=None):
     # ---------------------------------------------------------------------------
     _PUBLIC_PREFIXES = (
         "/api/auth/",
-        "/api/p2p/",   # P2P node-to-node endpoints use HMAC, not JWT
+        "/api/clients/register",   # shared-secret bootstrap, not JWT
         "/static/",
+        "/api/stream/",            # SSE endpoints use custom query_token_required
     )
 
     @app.before_request

@@ -10,7 +10,6 @@ from app.services.analytics_service import AnalyticsService
 from app.services.transaction_service import TransactionService
 from app.utils.auth_helpers import token_required
 from app.utils.helpers import validate_transaction_payload
-from app.utils.hmac_auth import require_hmac_signature
 from app.utils.logger import logger
 
 transaction_bp = Blueprint("transaction", __name__)
@@ -45,7 +44,7 @@ def create_transaction():
 
     try:
         origin_ip = request.remote_addr
-        result = TransactionService.process_transaction(data, origin_ip=origin_ip, broadcast=True)
+        result = TransactionService.process_transaction(data, origin_ip=origin_ip)
         return jsonify(result), 201
     except Exception as exc:  # noqa: BLE001
         logger.exception("Transaction processing failed: %s", exc)
@@ -60,35 +59,4 @@ def create_transaction():
         return jsonify({"error": "Internal server error"}), 500
 
 
-# ---------------------------------------------------------------------------
-# P2P receive endpoint (HMAC-protected, NOT JWT-protected)
-# ---------------------------------------------------------------------------
 
-@transaction_bp.route("/p2p/transaction", methods=["POST"])
-@require_hmac_signature
-def receive_p2p_transaction():
-    """
-    Receive a transaction broadcast from a peer node.
-    Processes and stores it locally. Does NOT re-broadcast (broadcast=False)
-    to avoid infinite loops.
-    """
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"error": "No payload"}), 400
-
-    is_valid, error_msg = validate_transaction_payload(data)
-    if not is_valid:
-        return jsonify({"error": error_msg}), 400
-
-    try:
-        origin_ip = request.remote_addr
-        result = TransactionService.process_transaction(
-            data,
-            origin_ip=origin_ip,
-            broadcast=False,  # don't re-broadcast to avoid infinite loops
-        )
-        logger.info("Received P2P transaction from %s", origin_ip)
-        return jsonify(result), 201
-    except Exception as exc:
-        logger.exception("P2P transaction processing failed: %s", exc)
-        return jsonify({"error": "Internal server error"}), 500

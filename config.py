@@ -57,10 +57,12 @@ class Config:
     JWT_HEADER_NAME    = "Authorization"
     JWT_HEADER_TYPE    = "Bearer"
 
-    # ── P2P Node Authentication (HMAC-SHA256) ─────────────────────────────
-    # Both nodes must share the same secret (set in .env on each machine)
-    PEER_HMAC_SECRET = os.environ.get("PEER_HMAC_SECRET", "peer-hmac-secret-change-in-production")
-    PEER_REQUEST_TIMEOUT = 5  # seconds
+    # ── Client Registration ───────────────────────────────────────────────
+    # Shared secret used by client nodes to auto-register with the server
+    CLIENT_REGISTRATION_SECRET = os.environ.get("CLIENT_REGISTRATION_SECRET", "client-reg-secret-change-in-production")
+
+    # ── Server URL (used by client launchers to locate the central server) ─
+    SERVER_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:5000")
 
     # ── TLS ───────────────────────────────────────────────────────────────
     TLS_CERT = os.path.join(BASE_DIR, "cert.pem")

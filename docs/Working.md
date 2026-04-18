@@ -24,19 +24,32 @@ This document functions as a comprehensive usage guide showing exactly how to la
    python scripts/generate_certs.py
    ```
    *This evaluates local IP tables, binds certificates directly avoiding mixed-content block errors dynamically mapping `cert.pem` and `key.pem`.*
+5. Ensure your `.env` contains the keys for the client-server architecture:
+   ```
+   CLIENT_REGISTRATION_SECRET=super-secret-registration-key
+   SERVER_URL=https://127.0.0.1:5000
+   ```
 
 ### 1.3 Launching the Application
-Execute the primary development driver:
+The architecture is split into a central server and multiple connecting clients. 
+
+Execute the **primary central server**:
 ```bash
-python run.py
+python run_server.py --port 5000
 ```
 *The command line log will indicate the HTTP server is bound exclusively over TLS (`https://`)*.
+
+Execute **connected clients** on separate terminals. Provide a unique port and generic ID for demonstration:
+```bash
+python run_client.py --port 5001 --client-id C1
+python run_client.py --port 5002 --client-id C2
+```
 
 ---
 
 ## 2. Navigating The Front-End Architecture
 
-### 2.1 The Dashboard Portal
+### 2.1 The Server Dashboard (Global Analytics)
 1. Open your browser to **`https://localhost:5000`**.  
    *(If prompted by browser SSL security configurations indicating self-signed risk, bypass utilizing **Advanced -> Proceed**)*.
 2. The initial view defaults to an identity assertion requirement via `login.html`.
@@ -46,32 +59,28 @@ python run.py
    ```
    *(This binds a baseline administrator within the SQL structure for JWT provisioning).*
 4. Once authenticated, the browser maps internal JWT definitions caching local sessions while unlocking the expansive visualization overview matrix (`index.html`).
+5. The dashboard presents **Connected Clients** logging live registrations alongside all systemic cryptographic telemetry.
 
-### 2.2 Live Transaction Tracking
-1. Notice the dashboard UI contains forms to initiate 'New Transactions'.
-2. Provide dummy values: Recipient ID (`User-7A`), Sender context (`Wallet_88`), and any integer Amount. Submit the details.
-3. Once engaged, the system automatically runs the dual-pipeline computation executing classical algorithms (RSA-2048) alongside the PQC (ML-KEM-768) process. 
-4. Validated via **Server-Sent Events**, visually inspect performance line charts mapping new timing footprints asynchronously updating directly onto the graph matrix dynamically without requiring hard page refreshes.
+### 2.2 The Client Dashboards (User-Level View) 
+1. Open your browser to the designated client address: **`https://localhost:5001`** (for C1).
+2. The UI limits information rendering only individual transaction data synchronized entirely via background SSE processing.
 
----
-
-## 3. Distributed Peer Architecture (P2P) Workflow
-
-The primary enhancement scales operations onto interlinked nodes ensuring consensus capability. Here’s how to trigger multi-instance demonstrations:
-
-1. Copy the codebase externally or run an identical process modifying the primary port map ensuring identical `.env` configurations dictating the same `PEER_HMAC_SECRET`.
-2. Assuming **Node 1** operates on `https://192.168.1.10:5000` and **Node 2** runs on `https://192.168.1.50:5000`.
-3. Launch your authenticated dashboard pointing at Node 1. Within the navigation context look for **Peers**.
-4. Register the secondary operating address (`https://192.168.1.50:5000`). Node 1 dynamically attempts a zero-trust HMAC handshake tracking Node 2 successfully.
-5. Create a transaction using Node 1's UI. Notice Node 1's logs broadcasting events automatically while Node 2 synchronizes the output natively reflecting identical transaction logs.
+### 2.3 Live Transaction Tracking
+1. Open the UI for an authenticated client (e.g. C1 at `https://localhost:5001`).
+2. Notice the dashboard UI contains forms to initiate 'New Transactions'.
+3. Submit a transaction targeted closely to another registered client (Recipient: `C2`, Amount: 500). 
+4. The client will securely ferry the intent context directly towards the centralized Master validation system.
+5. The Master API executes dual-pipeline cryptographic handling executing classical algorithms (RSA-2048) alongside the PQC (ML-KEM-768) process, immediately committing to the central Ledger metrics.
+6. Validated via **Server-Sent Events (SSE)**, the server natively updates its own UI, then isolates routing directly pushing SSE elements back down towards C2 (`sync_service`).
+7. Watch C2's interface reflect the fully complete transaction record silently onto the feed with no active polling or manual refresh required.
 
 ---
 
-## 4. Demonstrating the "Harvest Now, Decrypt Later" Event Simulation
+## 3. Demonstrating the "Harvest Now, Decrypt Later" Event Simulation
 
 This isolated interactive module exists to explain the urgent requirement for ML-KEM mapping.
 
-1. Via the Dashboard navigation, click on the **HNDL Attack Simulation** tab (or direct routing `https://localhost:5000/static/harvest.html`).
+1. Via the Central Server's Dashboard navigation, click on the **HNDL Attack Simulation** tab (or direct routing `https://localhost:5000/static/harvest.html`).
 2. Utilize the interactive components initializing the execution. 
 3. Observe the structured sequences:
    - **Phase 1**: Classical interception. Network footprints record ciphertext captures.
@@ -80,7 +89,7 @@ This isolated interactive module exists to explain the urgent requirement for ML
 
 ---
 
-## 5. Direct Execution of Developer Tooling
+## 4. Direct Execution of Developer Tooling
 
 Beyond user-interfaces, the system is backed by raw performance profiling tests. Executing these directly aids during backend debugging.
 

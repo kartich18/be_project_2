@@ -1,7 +1,7 @@
 # Quantum-Safe Banking Transaction System: Project Specifications
 
 ## 1. Executive Summary
-The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-Concept (PoC) designed to evaluate and demonstrate the transition of financial transaction systems from classical cryptographic standards to Post-Quantum Cryptography (PQC). The core objective is to protect financial architectures against the imminent threat of quantum computing and "Harvest Now, Decrypt Later" (HNDL) attacks by implementing next-generation, quantum-resistant algorithms side-by-side with classical counterparts. The project specifically integrates ML-KEM (Kyber) within an emulated multi-node network.
+The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-Concept (PoC) designed to evaluate and demonstrate the transition of financial transaction systems from classical cryptographic standards to Post-Quantum Cryptography (PQC). The core objective is to protect financial architectures against the imminent threat of quantum computing and "Harvest Now, Decrypt Later" (HNDL) attacks by implementing next-generation, quantum-resistant algorithms side-by-side with classical counterparts. The project specifically integrates ML-KEM (Kyber) within a centralized client-server architecture.
 
 ## 2. Complete Project Specifications
 
@@ -26,17 +26,20 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
 - Executes each banking transaction concurrently across parallel algorithmic pipelines: Classical (RSA) and Post-Quantum (ML-KEM).
 - Extracts and visualizes exact payload size expansions, allowing systemic engineering decisions regarding transmission overhead.
 
-### 3.2 Peer-to-Peer (P2P) Distributed Synchronization
-- Decentralized multi-node architecture communicating via HMAC-SHA256 authenticated REST protocol.
-- Independent, scalable nodes dynamically track the distributed registry of network neighbors mapping state synchronization immediately as transactions finalize.
+### 3.2 Client-Server Architecture & Real-Time Synchronization
+- Centralized model with a trusted server authority holding all keys, running all crypto, validating transactions, and maintaining the master ledger.
+- Thin client nodes authenticate, submit transaction intents, and receive updates via Server-Sent Events (SSE) from a central `NotificationService`.
+- Immediate transaction reflection on localized client-side SQL structures synchronized dynamically via a `SyncService`.
 
 ### 3.3 Access Control & Authorization Boundaries
 - JWT (JSON Web Tokens) backed sessions providing role-based interactions over dynamic dashboards.
-- Zero-trust network interfaces using a customized `@require_hmac_signature` middleware validator ensure cross-node P2P requests cannot be replayed or arbitrarily minted.
+- Client nodes register automatically with the central server upon startup using a pre-shared `CLIENT_REGISTRATION_SECRET` stored in the master configuration.
+- Strict data siloing ensures clients only have visibility over their respective transactions while the server aggregates global network analytics.
 
 ### 3.4 Operational Interactive Dashboard Layer 
 - Sophisticated "Glassmorphism" UI highlighting aesthetic, real-time KPI overviews natively coupled to the API via Server-Sent Events (SSE). No manual polling is utilized.
-- Renders advanced security insights visually: Latency Percentiles (p50, p95, p99), ML-KEM Migration Status thresholds, algorithmic ratio costs, and Anomaly Detections derived from key integration failures.
+- Renders advanced security insights visually: Latency Percentiles (p50, p95, p99), ML-KEM Migration Status thresholds, algorithmic ratio costs, and Anomaly Detections.
+- Segregated perspectives: Central server views global system telemetry, while connected clients display localized user-specific transaction histories.
 
 ### 3.5 "Harvest Now, Decrypt Later" (HNDL) Sandbox
 - Live simulation illustrating a phased Threat Actor approach targeting legacy banking traffic.
@@ -46,46 +49,60 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
 
 ### 4.1 Distributed Topology
 1. **Frontend Layer (Web Session)** 
-   - Receives persistent telemetry via HTTP streams.
+   - Receives persistent telemetry via HTTP streams (SSE).
    - Secures persistent context integrity via JWT caching protocols.
 2. **Flask REST API interface (Control Plane)** 
-   - Decoupled logic processing transactions from authenticated frontends while reacting to P2P triggers verified via HMAC. 
-3. **Core Services Layer** 
+   - Decoupled server logic processing transaction intents from authenticated thin clients.
+3. **Core Services Layer (Server)** 
    - **TransactionService**: Formats structured data, routes cryptographic execution.
    - **AnalyticsService**: Processes latencies, computes rolling SLA compliance percentiles, and exposes security metric heuristics.
    - **HarvestService**: Converts logical mathematical endpoints into executable IBM Qiskit Quantum instructions.
-   - **PeerService / EventBus**: Tracks node statuses and multiplexes real-time transactions internally (via threading) and externally (over HTTP).
-4. **Data Persistence**
-   - Implemented natively over **SQLite**, interfaced smoothly via **SQLAlchemy ORM** containing rigid definitions for Transactions, Users, Peer Connectivity, Key Metric Snapshots, and Audit logs.
+   - **NotificationService / EventBus**: Maintains real-time SSE push streams dedicated per-client and updates the server dashboard internally.
+4. **Client Services Layer**
+   - **SyncService**: Analyzes inbound SSE server-pushed models and reliably records entries into localized storage.
+5. **Data Persistence**
+   - Implemented natively over **SQLite**, interfaced smoothly via **SQLAlchemy ORM**.
+   - **Server Base**: Master ledger definitions for Transactions, Clients registry, Key Metric Snapshots, and Audit logs.
+   - **Client Base**: Local transaction replica maintaining lightweight, fast reads without historical cryptographic metric bloat.
 
 ## 5. Codebase Structure
 
 The ecosystem relies on an extensively modular directory design matching Python microservice architectures:
 
 ```text
-├── app/                  # Main Application logic hub
+├── app/                  # Main Server Application logic hub
 │   ├── crypto/           # Abstractions for Cryptographic functions
 │   │   ├── classical.py  # Standard RSA-2048 / AES handling
 │   │   ├── pqc.py        # liboqs wrapped ML-KEM methods
 │   │   └── benchmark.py  # Execution timing logic
 │   ├── models/           # SQLAlchemy Data Definition Structures
-│   │   ├── user.py, peer.py, transaction.py, anomaly.py, key_metadata.py
+│   │   ├── user.py, client.py, transaction.py, anomaly.py, key_metadata.py
 │   ├── routes/           # REST Handlers
 │   │   ├── analytics.py  # Dashboard KPI streams
 │   │   ├── auth.py       # User Identity validations
-│   │   ├── peer.py       # Node to node endpoints
-│   │   ├── stream.py     # SSE integration mappings
-│   │   └── transaction.py# Transaction generation endpoints
+│   │   ├── clients.py    # Client registry REST API endpoints
+│   │   ├── stream.py     # Global & per-client SSE mappings
+│   │   └── transaction.py# Transaction generation & validation endpoints
 │   ├── services/         # Decoupled Engine Rules
 │   │   ├── analytics_service.py
 │   │   ├── event_bus.py  # In-memory publish-subscribe broker
 │   │   ├── harvest_service.py
-│   │   └── peer_service.py    
-│   ├── templates/        # HTML Templates for UI Rendering
+│   │   └── notification_service.py # Routing logic for downstream client notifications    
+│   ├── templates/        # HTML Templates for UI Rendering (Server)
 │   │   ├── harvest.html  # Qiskit visualizer UI
-│   │   ├── index.html    # Main authenticated dashboard
+│   │   ├── index.html    # Master authenticated dashboard
 │   │   └── login.html    # Registration portal
-│   └── utils/            # Decorators (HMAC verification) & Loggers
+│   └── utils/            # Decorators & Loggers
+├── client_app/           # Thin-Client Node Application logic
+│   ├── models/           # Specialized light replica schemas
+│   │   └── local_transaction.py
+│   ├── routes/           # App mappings & Proxy handlers
+│   │   ├── auth.py, stream.py, transaction.py
+│   ├── services/
+│   │   └── sync_service.py # Database handler for SSE ingestions
+│   └── templates/        # Node-specific UI
+│       ├── dashboard.html
+│       └── login.html 
 ├── docs/                 # Project documentation and specifications
 │   └── planning/         # Pre-flight architectures and implementations
 ├── experiments/          # Sandbox area for Shor's alg. prototypes
@@ -100,7 +117,8 @@ The ecosystem relies on an extensively modular directory design matching Python 
 ├── static/               # Client-Side Render Assets
 │   ├── css/style.css
 │   └── js/dashboard.js   # Front-end analytical bridging
-├── run.py                # TLS Execution server wrapping Waitress/Flask
+├── run_server.py         # Standalone central server launch process 
+├── run_client.py         # Dedicated client process handling launch configs
 ├── config.py             # Systemic environment settings
 ├── .env                  # Configuration overlays
 └── requirements.txt      # Dependency manifest

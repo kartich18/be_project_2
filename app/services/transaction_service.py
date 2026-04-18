@@ -62,7 +62,7 @@ class TransactionService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def process_transaction(data: dict, session=None, origin_ip: str = None, broadcast: bool = True) -> dict:
+    def process_transaction(data: dict, session=None, origin_ip: str = None) -> dict:
         """
         Accept a transaction payload, encrypt with **both** classical and PQC
         methods (all three ML-KEM security levels), persist the results,
@@ -74,7 +74,6 @@ class TransactionService:
             session:    Optional SQLAlchemy session. Falls back to
                         ``db.session`` when ``None``.
             origin_ip:  LAN IP of the machine that initiated this transaction.
-            broadcast:  If True, broadcast to peer nodes after saving.
 
         Returns:
             dict with ``classical``, ``pqc_512``, ``pqc_768``, ``pqc_1024``
@@ -219,21 +218,28 @@ class TransactionService:
             ", ".join(pqc_ids),
         )
 
-        # --- Publish to SSE subscribers ------------------------------------
+        # --- Publish to SSE subscribers (server dashboard) ------------------
         EventBus.publish({
             "type":   "transaction",
-            "source": "peer" if origin_ip else "local",
+            "source": "server",
             "data":   response,
         })
 
-        # --- Broadcast to peer nodes (only for locally-initiated transactions)
-        if broadcast:
+        # --- Push to target client via per-client SSE ----------------------
+        receiver_client_id = data.get("receiver", "")
+        if receiver_client_id:
             try:
-                from app.services.peer_service import PeerService
-                raw_payload = json.dumps(data, sort_keys=True).encode("utf-8")
-                PeerService.broadcast_transaction(raw_payload)
+                from app.services.notification_service import NotificationService
+                NotificationService.push_to_client(
+                    receiver_client_id,
+                    {
+                        "type":   "transaction",
+                        "source": "server",
+                        "data":   response,
+                    },
+                )
             except Exception as exc:
-                logger.warning("Peer broadcast failed: %s", exc)
+                logger.warning("SSE push to client %s failed: %s", receiver_client_id, exc)
 
         return response
 
