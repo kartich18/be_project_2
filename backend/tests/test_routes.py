@@ -3,12 +3,22 @@ Tests for REST API routes — POST /api/transaction, GET /api/metrics,
 GET /api/benchmark.
 
 Uses Flask test client with TestingConfig (in-memory SQLite).
+
+Response shape (current 4-pipeline engine):
+  {
+    "classical": { ...tx fields... },
+    "pqc_512":   { ...tx fields... },   # present when liboqs available
+    "pqc_768":   { ...tx fields... },   # present when liboqs available
+    "pqc_1024":  { ...tx fields... },   # present when liboqs available
+    "pqc_error": "..."                  # present when liboqs NOT available
+  }
 """
 
 import pytest
 
 from app import create_app, db
 from app.models.transaction import Transaction
+from app.crypto.pqc import PQC_AVAILABLE
 from config import TestingConfig
 
 
@@ -63,19 +73,20 @@ def _seed_transactions(session, n_classical=3, n_pqc=2):
             key_size_bytes=294,
             ciphertext_size_bytes=256,
         ))
-    for i in range(n_pqc):
-        session.add(Transaction(
-            amount=200 * (i + 1),
-            sender="C",
-            receiver="D",
-            crypto_method="ML-KEM-768",
-            key_gen_time_ms=0.5 + i * 0.1,
-            encrypt_time_ms=0.2 + i * 0.05,
-            decrypt_time_ms=0.1 + i * 0.05,
-            total_time_ms=0.8 + i * 0.2,
-            key_size_bytes=1184,
-            ciphertext_size_bytes=1088,
-        ))
+    for algo in ("ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"):
+        for i in range(n_pqc):
+            session.add(Transaction(
+                amount=200 * (i + 1),
+                sender="C",
+                receiver="D",
+                crypto_method=algo,
+                key_gen_time_ms=0.5 + i * 0.1,
+                encrypt_time_ms=0.2 + i * 0.05,
+                decrypt_time_ms=0.1 + i * 0.05,
+                total_time_ms=0.8 + i * 0.2,
+                key_size_bytes=1184,
+                ciphertext_size_bytes=1088,
+            ))
     session.commit()
 
 
@@ -86,8 +97,8 @@ def _seed_transactions(session, n_classical=3, n_pqc=2):
 class TestPostTransaction:
     """Tests for POST /api/transaction."""
 
-    def test_valid_transaction_returns_201(self, client, auth_headers):
-        """Valid payload should return 201 with classical result."""
+    def test_valid_transaction_always_has_classical(self, client, auth_headers):
+        """Valid payload must always return 201 with a classical result."""
         resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         assert resp.status_code == 201
         data = resp.get_json()
@@ -95,8 +106,27 @@ class TestPostTransaction:
         assert data["classical"]["crypto_method"] == "RSA-2048"
         assert data["classical"]["status"] == "SETTLED"
 
+    @pytest.mark.skipif(not PQC_AVAILABLE, reason="liboqs not installed")
+    def test_valid_transaction_has_all_four_pipelines(self, client, auth_headers):
+        """With liboqs installed, all four pipeline keys must be present."""
+        resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
+        assert resp.status_code == 201
+        data = resp.get_json()
+        for key in ("classical", "pqc_512", "pqc_768", "pqc_1024"):
+            assert key in data, f"Expected key '{key}' missing from response"
+            assert data[key]["status"] == "SETTLED"
+
+    @pytest.mark.skipif(not PQC_AVAILABLE, reason="liboqs not installed")
+    def test_pqc_method_labels_are_correct(self, client, auth_headers):
+        """Each PQC result block must carry the correct crypto_method label."""
+        resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
+        data = resp.get_json()
+        assert data["pqc_512"]["crypto_method"] == "ML-KEM-512"
+        assert data["pqc_768"]["crypto_method"] == "ML-KEM-768"
+        assert data["pqc_1024"]["crypto_method"] == "ML-KEM-1024"
+
     def test_response_contains_timing_fields(self, client, auth_headers):
-        """Response should include timing metrics."""
+        """Classical result must include all timing metrics."""
         resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         data = resp.get_json()
         cl = data["classical"]
@@ -142,11 +172,11 @@ class TestPostTransaction:
         assert resp.status_code == 400
 
     def test_transaction_persisted_to_db(self, app, client, auth_headers):
-        """Transaction should appear in the database after POST."""
+        """At least the classical transaction row must appear in the database."""
         client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         with app.app_context():
-            rows = db.session.query(Transaction).all()
-            assert len(rows) >= 1  # at least the classical row
+            rows = db.session.query(Transaction).filter_by(crypto_method="RSA-2048").all()
+            assert len(rows) >= 1
 
 
 # -----------------------------------------------------------------------
@@ -157,7 +187,7 @@ class TestGetMetrics:
     """Tests for GET /api/metrics."""
 
     def test_empty_db_returns_200(self, client, auth_headers):
-        """Empty database should still return 200 with zero counts."""
+        """Empty database should still return 200 with zero counts for all methods."""
         resp = client.get("/api/metrics", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()
@@ -165,14 +195,16 @@ class TestGetMetrics:
         assert data["classical"]["count"] == 0
 
     def test_metrics_after_seeding(self, app, client, auth_headers):
-        """Metrics should reflect seeded transactions."""
+        """Metrics should reflect seeded transactions for all four methods."""
         with app.app_context():
             _seed_transactions(db.session, n_classical=5, n_pqc=3)
         resp = client.get("/api/metrics", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["classical"]["count"] == 5
+        assert data["pqc_512"]["count"] == 3
         assert data["pqc_768"]["count"] == 3
+        assert data["pqc_1024"]["count"] == 3
 
     def test_method_filter(self, app, client, auth_headers):
         """?method=RSA-2048 should return only classical results."""
@@ -182,7 +214,9 @@ class TestGetMetrics:
         assert resp.status_code == 200
         data = resp.get_json()
         assert "classical" in data
+        assert "pqc_512" not in data
         assert "pqc_768" not in data
+        assert "pqc_1024" not in data
 
     def test_last_param(self, app, client, auth_headers):
         """?last=2 should cap the number of rows considered."""
@@ -202,7 +236,7 @@ class TestGetBenchmark:
     """Tests for GET /api/benchmark."""
 
     def test_default_benchmark_returns_200(self, client, auth_headers):
-        """Default benchmark should return 200 with classical result."""
+        """Default benchmark should return 200 with a classical result."""
         resp = client.get("/api/benchmark?iterations=2", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.get_json()

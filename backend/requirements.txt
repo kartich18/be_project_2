@@ -10,7 +10,7 @@ bcrypt>=4.1.2
 # === TLS ===
 pyOpenSSL>=23.2.0
 
-# === P2P Networking ===
+# === HTTP Client ===
 requests>=2.31.0
 
 # === Database ===
@@ -23,7 +23,7 @@ flask-limiter>=3.5.0
 gunicorn>=21.0.0
 
 # === Cryptography ===
-# liboqs-python must be installed manually (see ENVIRONMENT_SETUP.md)
+# liboqs-python must be installed manually (see docs/Working.md)
 cryptography>=41.0.0
 
 # === Quantum Simulation ===

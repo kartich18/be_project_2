@@ -3,6 +3,15 @@ Integration tests — end-to-end flows across API, service, and data layers.
 
 Validates the full stack: POST /api/transaction → DB persistence → GET /api/metrics
 reflects the stored data, concurrent request handling, edge cases, and fallback.
+
+Current response shape (4-pipeline engine):
+  {
+    "classical": { ...tx fields... },
+    "pqc_512":   { ...tx fields... },   # present when liboqs available
+    "pqc_768":   { ...tx fields... },   # present when liboqs available
+    "pqc_1024":  { ...tx fields... },   # present when liboqs available
+    "pqc_error": "..."                  # present when liboqs NOT available
+  }
 """
 
 import json
@@ -58,17 +67,16 @@ VALID_PAYLOAD = {
 class TestPostToMetricsFlow:
     """Submit transactions via API, then verify DB state and metrics."""
 
-    def test_single_transaction_reflected_in_metrics(self, app, client, auth_headers):
-        """POST one transaction → GET /api/metrics should reflect it."""
-        # 1. Submit a transaction
+    def test_single_transaction_classical_always_present(self, app, client, auth_headers):
+        """POST one transaction → classical result must always be present and SETTLED."""
         resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         assert resp.status_code == 201
-        tx_data = resp.get_json()
+        data = resp.get_json()
 
-        # Classical result should always be present
-        assert tx_data["classical"]["status"] == "SETTLED"
+        assert "classical" in data
+        assert data["classical"]["status"] == "SETTLED"
 
-        # 2. Check DB row count
+        # DB must have at least the classical row
         with app.app_context():
             classical_count = (
                 db.session.query(Transaction)
@@ -77,7 +85,32 @@ class TestPostToMetricsFlow:
             )
             assert classical_count >= 1
 
-        # 3. Verify metrics endpoint
+    @pytest.mark.skipif(not PQC_AVAILABLE, reason="liboqs not installed")
+    def test_single_transaction_all_pipelines_present(self, app, client, auth_headers):
+        """With liboqs, POST one transaction → 4 pipeline results + 4 DB rows."""
+        resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
+        assert resp.status_code == 201
+        data = resp.get_json()
+
+        for key in ("classical", "pqc_512", "pqc_768", "pqc_1024"):
+            assert key in data, f"Expected pipeline key '{key}' missing"
+            assert data[key]["status"] == "SETTLED"
+
+        # DB should have one row per pipeline
+        with app.app_context():
+            for method in ("RSA-2048", "ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"):
+                count = (
+                    db.session.query(Transaction)
+                    .filter_by(crypto_method=method)
+                    .count()
+                )
+                assert count >= 1, f"No DB row found for {method}"
+
+    def test_single_transaction_reflected_in_metrics(self, app, client, auth_headers):
+        """POST one transaction → GET /api/metrics should show count >= 1."""
+        resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
+        assert resp.status_code == 201
+
         metrics_resp = client.get("/api/metrics", headers=auth_headers)
         assert metrics_resp.status_code == 200
         metrics = metrics_resp.get_json()
@@ -85,7 +118,7 @@ class TestPostToMetricsFlow:
         assert metrics["classical"]["avg_total_ms"] > 0
 
     def test_multiple_transactions_aggregation(self, app, client, auth_headers):
-        """Submit 3 transactions → metrics should aggregate correctly."""
+        """Submit 3 transactions → classical metrics should aggregate correctly."""
         for i in range(3):
             resp = client.post("/api/transaction", json={
                 "amount": 100 * (i + 1),
@@ -111,7 +144,9 @@ class TestPostToMetricsFlow:
         assert resp.status_code == 200
         data = resp.get_json()
         assert "classical" in data
+        assert "pqc_512" not in data
         assert "pqc_768" not in data
+        assert "pqc_1024" not in data
 
 
 # -----------------------------------------------------------------------
@@ -123,11 +158,9 @@ class TestBenchmarkCoexistence:
 
     def test_transaction_then_benchmark(self, client, auth_headers):
         """POST a transaction, then run a small benchmark — both succeed."""
-        # Transaction
         resp1 = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         assert resp1.status_code == 201
 
-        # Benchmark (small iteration count for speed)
         resp2 = client.get("/api/benchmark?iterations=2", headers=auth_headers)
         assert resp2.status_code == 200
         bench = resp2.get_json()
@@ -136,17 +169,19 @@ class TestBenchmarkCoexistence:
 
 
 # -----------------------------------------------------------------------
-# Dashboard route
+# Health-check route
 # -----------------------------------------------------------------------
 
-class TestDashboardRoute:
-    """Verify the dashboard serves HTML."""
+class TestHealthCheckRoute:
+    """Verify the root route returns the API health-check JSON."""
 
-    def test_root_returns_json(self, client):
-        """GET / should return 200 with JSON content instead of HTML now."""
+    def test_root_returns_json_status_ok(self, client):
+        """GET / should return 200 with JSON {status: ok} — the SPA is served by Vite."""
         resp = client.get("/")
         assert resp.status_code == 200
-        assert b"status" in resp.data
+        data = resp.get_json()
+        assert data["status"] == "ok"
+        assert "service" in data
 
 
 # -----------------------------------------------------------------------
@@ -164,8 +199,7 @@ class TestEdgeCases:
             "account_id_to": "Bob",
         }, headers=auth_headers)
         assert resp.status_code == 201
-        data = resp.get_json()
-        assert data["classical"]["status"] == "SETTLED"
+        assert resp.get_json()["classical"]["status"] == "SETTLED"
 
     def test_very_small_amount(self, client, auth_headers):
         """Tiny but positive amount should be accepted."""
@@ -204,11 +238,9 @@ class TestRapidFireRequests:
             }, headers=auth_headers)
             responses.append(resp)
 
-        # All should succeed
         for resp in responses:
             assert resp.status_code == 201
 
-        # DB should have 5 classical rows
         with app.app_context():
             classical_count = (
                 db.session.query(Transaction)
@@ -219,7 +251,7 @@ class TestRapidFireRequests:
 
 
 # -----------------------------------------------------------------------
-# Liboqs fallback
+# liboqs fallback
 # -----------------------------------------------------------------------
 
 class TestPQCFallback:
@@ -230,24 +262,33 @@ class TestPQCFallback:
         reason="liboqs IS installed — cannot test fallback path",
     )
     def test_transaction_succeeds_without_liboqs(self, client, auth_headers):
-        """Classical path should succeed; response should contain pqc_error."""
+        """Classical path should succeed; response must have pqc_error, no pqc_* keys."""
         resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         assert resp.status_code == 201
         data = resp.get_json()
 
         assert data["classical"]["status"] == "SETTLED"
         assert "pqc_error" in data
+        assert "pqc_512" not in data
+        assert "pqc_768" not in data
+        assert "pqc_1024" not in data
 
     @pytest.mark.skipif(
         not PQC_AVAILABLE,
         reason="liboqs not installed — cannot test PQC success path",
     )
-    def test_both_methods_succeed_with_liboqs(self, client, auth_headers):
-        """With liboqs installed, both classical and PQC should succeed."""
+    def test_all_four_pipelines_succeed_with_liboqs(self, client, auth_headers):
+        """With liboqs installed, all four pipelines must succeed."""
         resp = client.post("/api/transaction", json=VALID_PAYLOAD, headers=auth_headers)
         assert resp.status_code == 201
         data = resp.get_json()
 
-        assert data["classical"]["status"] == "SETTLED"
-        assert "pqc_768" in data
-        assert data["pqc_768"]["status"] == "SETTLED"
+        for key, method in [
+            ("classical", "RSA-2048"),
+            ("pqc_512",   "ML-KEM-512"),
+            ("pqc_768",   "ML-KEM-768"),
+            ("pqc_1024",  "ML-KEM-1024"),
+        ]:
+            assert key in data, f"Missing pipeline key '{key}'"
+            assert data[key]["status"] == "SETTLED"
+            assert data[key]["crypto_method"] == method

@@ -17,11 +17,8 @@ limiter = Limiter(key_func=get_remote_address)
 
 def create_app(config_class=None):
     """Create and configure the Flask application."""
-    app = Flask(
-        __name__,
-        static_folder="../static",
-        template_folder="../templates",
-    )
+    # SPA is served entirely by Vite — no static_folder or template_folder needed.
+    app = Flask(__name__)
 
     # Load configuration
     if config_class is None:
