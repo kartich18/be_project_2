@@ -146,6 +146,12 @@ class TransactionService:
             latency_bucket=TransactionService._latency_bucket(classical_result["total_ms"]),
             failure_reason=None if classical_result["verified"] else "verification_failed",
             origin_ip=origin_ip,
+            # RSA-PSS digital signature telemetry
+            sign_time_ms=classical_result.get("sign_ms"),
+            verify_time_ms=classical_result.get("verify_ms"),
+            dsa_algorithm="RSA-PSS",
+            dsa_public_key_bytes=classical_result.get("public_key_bytes"),  # same RSA key
+            signature_size_bytes=256,  # RSA-2048 signature is always 256 B
         )
         session.add(classical_tx)
         TransactionService._record_key_metadata(
@@ -222,6 +228,12 @@ class TransactionService:
                         latency_bucket=TransactionService._latency_bucket(pqc_result["total_ms"]),
                         failure_reason=None if pqc_result["verified"] else "verification_failed",
                         origin_ip=origin_ip,
+                        # ML-DSA digital signature telemetry (paired security level)
+                        sign_time_ms=pqc_result.get("sign_ms"),
+                        verify_time_ms=pqc_result.get("verify_ms"),
+                        dsa_algorithm=pqc_result.get("dsa_algorithm"),
+                        dsa_public_key_bytes=pqc_result.get("dsa_public_key_bytes"),
+                        signature_size_bytes=pqc_result.get("signature_bytes"),
                     )
                     session.add(pqc_tx)
                     TransactionService._record_key_metadata(

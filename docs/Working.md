@@ -43,7 +43,7 @@ This document functions as a comprehensive usage guide showing exactly how to la
    ```bash
    alembic upgrade head
    ```
-   *This initializes user schemas, refresh token sessions, audit logs, account models, and user key stores.*
+   *This initializes user schemas, refresh token sessions, audit logs, account models, user key stores, and the digital signature telemetry columns (`sign_time_ms`, `verify_time_ms`, `dsa_algorithm`, etc.).*
 
 ### 1.3 Launching the Application
 
@@ -76,17 +76,33 @@ npm run dev
 ### 2.2 Role-Based Dashboards
 Upon authentication, the application routes the user based on their internal role:
 
-- **Admin (`role=admin`)**: Routed to the **Admin Analytics Dashboard** — full global system telemetry, real-time transaction stream, ML-KEM migration status, algorithm comparison, key rotation health, anomaly detection, and security events.
-- **Viewer (`role=viewer`)**: Routed to the **Client Transactions Dashboard** — isolated personal transaction history updated live via SSE, plus a directory-aware form to send transfers to other registered accounts.
+- **Admin (`role=admin`)**: Routed to the **Admin Analytics Dashboard** — full global system telemetry, real-time transaction stream, ML-KEM migration status, algorithm comparison, key rotation health, anomaly detection, security events, and the **Digital Signature Health** panel (see §2.3).
+- **Viewer (`role=viewer`)**: Routed to the **Client Transactions Dashboard** — isolated personal transaction history (showing usernames, not raw account IDs) updated live via SSE, plus a directory-aware form to send transfers to other registered accounts.
 
-### 2.3 Live Transaction Tracking & Per-User Crypto
+### 2.3 Live Transaction Tracking, Per-User Crypto & Digital Signatures
 1. Log in via a Viewer account.
 2. Submit a transaction using the send form — select the recipient from the user directory and enter an amount.
-3. Under the hood, the platform runs a **four-pipeline transaction engine**: every transaction is processed simultaneously via Classical RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
-4. The transaction is committed to the ledger and transitions through the state machine: `INITIATED → VALIDATED → CRYPTO_PROCESSED → COMMITTED → SETTLED`.
+3. Under the hood, the platform runs a **five-pipeline transaction engine**:
+   - **Encryption**: Classical RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024 simultaneously.
+   - **Digital Signatures**: Each pipeline signs the payload — RSA-PSS for classical; ML-DSA-44 (Level 2), ML-DSA-65 (Level 3), and ML-DSA-87 (Level 5) for each PQC level respectively (NIST FIPS 204 / Dilithium).
+4. The transaction is committed to the ledger, transitions through the state machine (`INITIATED → SETTLED`), and sign/verify timing is stored in the DB.
 5. Both the sender and recipient dashboards update live via SSE — no page refresh needed.
+6. The Sender → Receiver column in all tables shows **usernames**, not raw account numbers.
 
-### 2.4 Session Management
+### 2.4 Admin Digital Signature Health Panel
+The Admin Analytics Dashboard includes a dedicated **Digital Signature Health** section:
+- **Four algorithm cards**: RSA-PSS, ML-DSA-44, ML-DSA-65, ML-DSA-87 — each showing avg sign time, avg verify time, signature size, public key size, verified%, and quantum-safe status.
+- **Dynamic verdict**: Auto-generated comparison of ML-DSA-65 vs RSA-PSS sign/verify speed and signature size tradeoff.
+- **Sign (ms) / Verify (ms)** columns are also visible in the Recent Transactions table.
+- Data is fetched from `GET /api/v1/analytics/signature-health` and refreshes every 10 seconds.
+
+### 2.5 Load Generator (Admin only)
+The **Load Generator** card on the Admin Dashboard generates synthetic multi-pair traffic:
+- On start, it fetches all registered account pairs from `/api/directory/users`.
+- It cycles through real account pairs — no fake IDs are sent to the backend.
+- Requires at least 2 registered users with accounts.
+
+### 2.6 Session Management
 - Navigate to the **Sessions** tab in the React SPA.
 - All active login sessions (device, IP, last used) are listed.
 - Individual sessions can be revoked, immediately invalidating that device's refresh token.

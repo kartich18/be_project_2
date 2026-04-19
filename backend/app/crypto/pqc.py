@@ -1,8 +1,17 @@
 """
-Post-quantum cryptography module — ML-KEM-512 / ML-KEM-768 / ML-KEM-1024.
+Post-quantum cryptography module — ML-KEM-512 / ML-KEM-768 / ML-KEM-1024
+                                 + ML-DSA-44  / ML-DSA-65  / ML-DSA-87.
 
-Implements key encapsulation/decapsulation using liboqs (FIPS 203),
-with AES-256-GCM symmetric encryption for the actual payload.
+Implements:
+  • Key encapsulation/decapsulation (ML-KEM) via liboqs (FIPS 203)
+  • Digital signatures (ML-DSA) via liboqs (FIPS 204)
+  • AES-256-GCM symmetric encryption for the actual payload
+
+Security-level pairings (Option B — matched NIST levels):
+  ML-KEM-512  ↔ ML-DSA-44   (Level 2)
+  ML-KEM-768  ↔ ML-DSA-65   (Level 3)
+  ML-KEM-1024 ↔ ML-DSA-87   (Level 5)
+
 All operations return timing data for benchmarking.
 
 If liboqs is not installed, the module loads without error but all
@@ -28,22 +37,42 @@ _oqs = None
 try:
     import oqs as _oqs  # type: ignore[import-untyped]
     PQC_AVAILABLE = True
-    logger.info("liboqs loaded — PQC operations available (ML-KEM-512/768/1024)")
+    logger.info("liboqs loaded — PQC operations available (ML-KEM + ML-DSA)")
 except (ImportError, OSError, SystemExit):
     logger.warning(
         "liboqs-python not available. PQC operations will be disabled. "
         "Build and install liboqs, then `pip install liboqs-python`."
     )
 
-# Default algorithm (backward compatible)
-KEM_ALGORITHM = "ML-KEM-768"
+# ---------------------------------------------------------------------------
+# KEM configuration
+# ---------------------------------------------------------------------------
 
-# All supported KEM security levels
-KEM_ALGORITHMS = ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]
+KEM_ALGORITHM  = "ML-KEM-768"                                    # default
+KEM_ALGORITHMS = ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]    # all levels
 
-AES_KEY_BITS = 256
+# ---------------------------------------------------------------------------
+# DSA configuration (FIPS 204 — ML-DSA / Dilithium)
+# Option B: paired security levels
+# ---------------------------------------------------------------------------
+
+DSA_ALGORITHM  = "ML-DSA-65"    # default (Level 3)
+DSA_ALGORITHMS = ["ML-DSA-44", "ML-DSA-65", "ML-DSA-87"]
+
+# Paired KEM → DSA at matching NIST security level
+KEM_TO_DSA: dict[str, str] = {
+    "ML-KEM-512":  "ML-DSA-44",   # Level 2
+    "ML-KEM-768":  "ML-DSA-65",   # Level 3
+    "ML-KEM-1024": "ML-DSA-87",   # Level 5
+}
+
+# ---------------------------------------------------------------------------
+# AES-GCM constants
+# ---------------------------------------------------------------------------
+
+AES_KEY_BITS  = 256
 AES_KEY_BYTES = AES_KEY_BITS // 8
-NONCE_BYTES = 12  # 96-bit nonce for AES-GCM
+NONCE_BYTES   = 12  # 96-bit nonce for AES-GCM
 
 
 def _require_pqc():
@@ -234,19 +263,131 @@ def aes_gcm_decrypt(key: bytes, encrypted_data: bytes) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end helper
+# DSA  (ML-DSA via liboqs — FIPS 204)
+# ---------------------------------------------------------------------------
+
+def generate_dsa_keypair(algorithm: str = DSA_ALGORITHM) -> dict:
+    """
+    Generate an ML-DSA signing key pair.
+
+    Args:
+        algorithm: DSA algorithm name ("ML-DSA-44", "ML-DSA-65", "ML-DSA-87").
+                   Defaults to ML-DSA-65 (Level 3).
+
+    Returns:
+        dict with keys: sig (the Signature object, holds secret key),
+        public_key (bytes), elapsed_ms, public_key_bytes, secret_key_bytes.
+    """
+    _require_pqc()
+    start = time.perf_counter_ns()
+
+    sig = _oqs.Signature(algorithm)
+    public_key = sig.generate_keypair()
+
+    elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+
+    logger.debug(
+        "%s DSA keygen in %.3f ms  (pub %d B, secret %d B)",
+        algorithm, elapsed_ms, len(public_key), sig.length_secret_key,
+    )
+
+    return {
+        "sig": sig,
+        "public_key": public_key,
+        "elapsed_ms": elapsed_ms,
+        "public_key_bytes": len(public_key),
+        "secret_key_bytes": sig.length_secret_key,
+    }
+
+
+def sign_dsa(sig_obj, message: bytes) -> dict:
+    """
+    Sign a message with ML-DSA.
+
+    Args:
+        sig_obj: The Signature object from generate_dsa_keypair() that holds
+                 the secret key.
+        message: Data to sign (the original plaintext payload).
+
+    Returns:
+        dict with keys: signature (bytes), elapsed_ms, signature_bytes.
+    """
+    _require_pqc()
+    start = time.perf_counter_ns()
+
+    signature = sig_obj.sign(message)
+
+    elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+
+    logger.debug(
+        "ML-DSA sign in %.3f ms  (sig %d B)",
+        elapsed_ms, len(signature),
+    )
+
+    return {
+        "signature": signature,
+        "elapsed_ms": elapsed_ms,
+        "signature_bytes": len(signature),
+    }
+
+
+def verify_dsa(public_key: bytes, message: bytes, signature: bytes,
+               algorithm: str = DSA_ALGORITHM) -> dict:
+    """
+    Verify an ML-DSA signature.
+
+    Args:
+        public_key: DSA public key bytes from generate_dsa_keypair().
+        message:    Original message that was signed.
+        signature:  Signature bytes from sign_dsa().
+        algorithm:  DSA algorithm name (must match the signing algorithm).
+
+    Returns:
+        dict with keys: is_valid (bool), elapsed_ms.
+    """
+    _require_pqc()
+    start = time.perf_counter_ns()
+
+    verifier = _oqs.Signature(algorithm)
+    is_valid = verifier.verify(message, signature, public_key)
+
+    elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+
+    logger.debug(
+        "ML-DSA verify in %.3f ms — valid=%s",
+        elapsed_ms, is_valid,
+    )
+
+    return {
+        "is_valid": bool(is_valid),
+        "elapsed_ms": elapsed_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
+# End-to-end helper  (KEM + AES-GCM + ML-DSA)
 # ---------------------------------------------------------------------------
 
 def encrypt_transaction(plaintext: Union[bytes, str], algorithm: str = KEM_ALGORITHM) -> dict:
     """
-    Run a full ML-KEM + AES-256-GCM encrypt → decrypt cycle.
+    Run a full ML-KEM + AES-256-GCM + ML-DSA sign/verify cycle.
+
+    The DSA algorithm is automatically selected to match the KEM security
+    level (Option B — paired NIST levels):
+        ML-KEM-512  → ML-DSA-44  (Level 2)
+        ML-KEM-768  → ML-DSA-65  (Level 3)
+        ML-KEM-1024 → ML-DSA-87  (Level 5)
 
     Workflow:
-        1. KEM keygen
-        2. KEM encapsulate  → shared secret
-        3. AES-GCM encrypt payload with shared secret
-        4. KEM decapsulate  → recover shared secret
-        5. AES-GCM decrypt  → recover payload
+        1.  KEM keygen
+        2.  KEM encapsulate  → shared secret
+        3.  AES-GCM encrypt payload with shared secret
+        4.  DSA keygen
+        5.  ML-DSA sign(plaintext)
+        6.  KEM decapsulate  → recover shared secret
+        7.  AES-GCM decrypt  → recover payload
+        8.  ML-DSA verify(signature)
+        9.  verified = (plaintext match) AND (dsa.is_valid)
 
     Args:
         plaintext: Transaction payload (str will be UTF-8 encoded).
@@ -255,16 +396,20 @@ def encrypt_transaction(plaintext: Union[bytes, str], algorithm: str = KEM_ALGOR
     Returns:
         dict with keys:
             method, key_gen_ms, encapsulate_ms, encrypt_ms,
-            decapsulate_ms, decrypt_ms, total_ms,
+            decapsulate_ms, decrypt_ms,
+            dsa_algorithm, dsa_keygen_ms, sign_ms, verify_ms,
             public_key_bytes, secret_key_bytes, ciphertext_bytes,
-            verified (bool).
+            dsa_public_key_bytes, signature_bytes,
+            verified (bool), dsa_verified (bool).
     """
     _require_pqc()
 
     if isinstance(plaintext, str):
         plaintext = plaintext.encode("utf-8")
 
-    # 1. Key generation
+    dsa_algorithm = KEM_TO_DSA.get(algorithm, DSA_ALGORITHM)
+
+    # 1. KEM key generation
     keygen = generate_keypair(algorithm)
 
     # 2. Encapsulate (sender side)
@@ -273,41 +418,66 @@ def encrypt_transaction(plaintext: Union[bytes, str], algorithm: str = KEM_ALGOR
     # 3. AES-GCM encrypt with shared secret
     enc = aes_gcm_encrypt(encap["shared_secret"], plaintext)
 
-    # 4. Decapsulate (receiver side)
+    # 4. DSA key generation
+    dsa_kp = generate_dsa_keypair(dsa_algorithm)
+
+    # 5. ML-DSA sign the original plaintext
+    sig_result = sign_dsa(dsa_kp["sig"], plaintext)
+
+    # 6. Decapsulate (receiver side)
     decap = decapsulate(keygen["kem"], encap["ciphertext"])
 
-    # 5. AES-GCM decrypt with recovered shared secret
+    # 7. AES-GCM decrypt with recovered shared secret
     dec = aes_gcm_decrypt(decap["shared_secret"], enc["encrypted_data"])
 
-    # Verify round-trip integrity
-    verified = dec["plaintext"] == plaintext
+    # 8. ML-DSA verify
+    ver = verify_dsa(dsa_kp["public_key"], dec["plaintext"],
+                     sig_result["signature"], dsa_algorithm)
+
+    # 9. Combined integrity check
+    plaintext_match = dec["plaintext"] == plaintext
+    verified = plaintext_match and ver["is_valid"]
 
     total_ms = (
         keygen["elapsed_ms"]
         + encap["elapsed_ms"]
         + enc["elapsed_ms"]
+        + dsa_kp["elapsed_ms"]
+        + sig_result["elapsed_ms"]
         + decap["elapsed_ms"]
         + dec["elapsed_ms"]
+        + ver["elapsed_ms"]
     )
 
     return {
-        "method": algorithm,
-        "key_gen_ms": round(keygen["elapsed_ms"], 4),
-        "encapsulate_ms": round(encap["elapsed_ms"], 4),
-        "encrypt_ms": round(enc["elapsed_ms"], 4),
-        "decapsulate_ms": round(decap["elapsed_ms"], 4),
-        "decrypt_ms": round(dec["elapsed_ms"], 4),
-        "total_ms": round(total_ms, 4),
-        "public_key_bytes": keygen["public_key_bytes"],
-        "secret_key_bytes": keygen["secret_key_bytes"],
-        "ciphertext_bytes": len(enc["encrypted_data"]),
-        "verified": verified,
+        # KEM fields
+        "method":            algorithm,
+        "key_gen_ms":        round(keygen["elapsed_ms"], 4),
+        "encapsulate_ms":    round(encap["elapsed_ms"], 4),
+        "encrypt_ms":        round(enc["elapsed_ms"], 4),
+        "decapsulate_ms":    round(decap["elapsed_ms"], 4),
+        "decrypt_ms":        round(dec["elapsed_ms"], 4),
+        "public_key_bytes":  keygen["public_key_bytes"],
+        "secret_key_bytes":  keygen["secret_key_bytes"],
+        "ciphertext_bytes":  len(enc["encrypted_data"]),
+        # DSA fields
+        "dsa_algorithm":         dsa_algorithm,
+        "dsa_keygen_ms":         round(dsa_kp["elapsed_ms"], 4),
+        "sign_ms":               round(sig_result["elapsed_ms"], 4),
+        "verify_ms":             round(ver["elapsed_ms"], 4),
+        "dsa_public_key_bytes":  dsa_kp["public_key_bytes"],
+        "signature_bytes":       sig_result["signature_bytes"],
+        "dsa_verified":          ver["is_valid"],
+        # Combined
+        "total_ms":  round(total_ms, 4),
+        "verified":  verified,
     }
 
 
 def encrypt_transaction_all(plaintext: Union[bytes, str]) -> dict:
     """
     Run encrypt_transaction for every supported ML-KEM security level.
+    Each KEM level uses its paired ML-DSA algorithm (Option B).
 
     Args:
         plaintext: Transaction payload.
@@ -315,9 +485,9 @@ def encrypt_transaction_all(plaintext: Union[bytes, str]) -> dict:
     Returns:
         dict keyed by algorithm name, e.g.:
         {
-            "ML-KEM-512": { ... },
-            "ML-KEM-768": { ... },
-            "ML-KEM-1024": { ... },
+            "ML-KEM-512":  { ..., "dsa_algorithm": "ML-DSA-44", ... },
+            "ML-KEM-768":  { ..., "dsa_algorithm": "ML-DSA-65", ... },
+            "ML-KEM-1024": { ..., "dsa_algorithm": "ML-DSA-87", ... },
         }
     """
     results = {}

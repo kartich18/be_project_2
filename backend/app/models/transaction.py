@@ -67,6 +67,13 @@ class Transaction(db.Model):
     failure_reason = db.Column(db.String(255), nullable=True)
     origin_ip      = db.Column(db.String(45), nullable=True)  # LAN IP of originating peer
 
+    # digital signature (RSA-PSS for classical; ML-DSA for PQC)
+    sign_time_ms         = db.Column(db.Float,      nullable=True)   # ms to generate signature
+    verify_time_ms       = db.Column(db.Float,      nullable=True)   # ms to verify signature
+    dsa_algorithm        = db.Column(db.String(16), nullable=True)   # e.g. "ML-DSA-65" / "RSA-PSS"
+    dsa_public_key_bytes = db.Column(db.Integer,    nullable=True)   # DSA public key size (B)
+    signature_size_bytes = db.Column(db.Integer,    nullable=True)   # signature size (B)
+
     # status
     status = db.Column(db.String(32), nullable=False, default=TransactionState.FAILED.value)
 
@@ -97,10 +104,16 @@ class Transaction(db.Model):
             "key_size_bytes": self.key_size_bytes,
             "secret_key_bytes": self.secret_key_bytes,
             "ciphertext_size_bytes": self.ciphertext_size_bytes,
-            "latency_bucket": self.latency_bucket,
-            "failure_reason": self.failure_reason,
-            "origin_ip":      self.origin_ip,
-            "status": self.status,
+            "latency_bucket":        self.latency_bucket,
+            "failure_reason":        self.failure_reason,
+            "origin_ip":             self.origin_ip,
+            "status":                self.status,
+            # digital signature fields
+            "sign_time_ms":          self.sign_time_ms,
+            "verify_time_ms":        self.verify_time_ms,
+            "dsa_algorithm":         self.dsa_algorithm,
+            "dsa_public_key_bytes":  self.dsa_public_key_bytes,
+            "signature_size_bytes":  self.signature_size_bytes,
         }
 
     def __repr__(self) -> str:

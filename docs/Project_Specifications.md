@@ -10,9 +10,13 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
   - **Asymmetric**: RSA-2048 (OAEP padding for encryption, PSS for signing).
   - **Symmetric**: AES-256-GCM (used for bulk payload encryption).
   - **Hash Function**: SHA-256.
-- **Post-Quantum Suite**:
+- **Post-Quantum Suite (FIPS 203 + FIPS 204)**:
   - **Key Encapsulation Mechanism (KEM)**: All three NIST security levels — ML-KEM-512, ML-KEM-768, and ML-KEM-1024 (aligned with NIST FIPS 203).
-  - **Implementation**: Utilizes the `liboqs` C-library bound via `liboqs-python` for native CPU-based post-quantum math structures.
+  - **Digital Signature Algorithm (DSA)**: ML-DSA-44, ML-DSA-65, and ML-DSA-87 (aligned with NIST FIPS 204 / Dilithium). Each KEM level is paired with the DSA scheme at the matching NIST security level (Option B — paired levels):
+    - ML-KEM-512 ↔ ML-DSA-44 (Level 2)
+    - ML-KEM-768 ↔ ML-DSA-65 (Level 3)
+    - ML-KEM-1024 ↔ ML-DSA-87 (Level 5)
+  - **Implementation**: Utilizes the `liboqs` C-library bound via `liboqs-python` for both KEM and DSA operations.
 - **Quantum Simulation Framework**:
   - Utilizes **Qiskit** (IBM Quantum SDK) for classical, circuit-based simulations of Shor's algorithm (using simplified moduli like N=15) to statistically demonstrate the mathematical failure of RSA to quantum observation.
 
@@ -22,8 +26,10 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
 
 ## 3. Implemented Features
 
-### 3.1 Dual-Path Transaction Engine
-- Executes each banking transaction concurrently across four parallel algorithmic pipelines: Classical (RSA-2048), ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+### 3.1 Five-Pipeline Crypto Engine (Encryption + Signatures)
+- Executes each banking transaction across four parallel encryption pipelines: Classical (RSA-2048), ML-KEM-512, ML-KEM-768, and ML-KEM-1024.
+- **Every transaction is also digitally signed**: the classical pipeline signs with RSA-PSS / SHA-256; the three PQC pipelines sign with their paired ML-DSA algorithm (ML-DSA-44/65/87 respectively).
+- Sign and verify timing, signature byte sizes, and DSA public key sizes are recorded per-transaction in the database and surfaced via the new `GET /api/v1/analytics/signature-health` endpoint.
 - Extracts and visualizes exact payload size expansions, allowing systemic engineering decisions regarding transmission overhead.
 - All three ML-KEM security levels run on every transaction, providing a direct side-by-side comparison of key sizes and latencies.
 
@@ -50,9 +56,10 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
 ### 3.6 Operational Interactive Dashboard Layer
 - Sophisticated "Glassmorphism" React SPA with real-time KPI overviews natively coupled to the API via Server-Sent Events (SSE). No manual polling is utilized.
 - Renders advanced security insights visually: Latency Percentiles (p50, p95, p99), ML-KEM Migration Status thresholds, algorithmic ratio costs, and Anomaly Detections.
-- **Admin Analytics Dashboard**: Global system telemetry, live registrations, algorithmic comparisons, key rotation health, security events, and full transaction history.
-- **Viewer Transaction Management**: Isolated user-specific transaction history and a directory-aware interface to execute client-to-client transfers.
+- **Admin Analytics Dashboard**: Global system telemetry, live registrations, algorithmic comparisons, key rotation health, security events, full transaction history, and the **Digital Signature Health** panel showing RSA-PSS vs ML-DSA-44/65/87 sign/verify timing and signature sizes.
+- **Viewer Transaction Management**: Isolated user-specific transaction history (with resolved usernames, not raw account IDs) updated live via SSE, plus a directory-aware form to execute client-to-client transfers.
 - **Sessions Management**: Users can review and revoke individual active login sessions.
+- **Load Generator**: Admin dashboard includes a traffic generator that cycles through real registered account pairs — no synthetic IDs are sent to the backend.
 
 ### 3.7 "Harvest Now, Decrypt Later" (HNDL) Sandbox
 - Live simulation illustrating a phased Threat Actor approach targeting legacy banking traffic.
@@ -70,9 +77,9 @@ The **Quantum-Safe Banking Transaction System** is a state-of-the-art Proof-of-C
    - Pure JSON API server — no Jinja templates or server-side rendering.
    - Handles authentication, transactions, analytics, streaming, key management, and the HNDL harvest simulator.
 3. **Core Services Layer**
-   - **TransactionService**: Formats structured data, routes cryptographic execution across all 4 pipelines (Classical + 3 ML-KEM levels).
+   - **TransactionService**: Formats structured data, routes cryptographic execution across all 4 encryption pipelines (Classical + 3 ML-KEM levels), and orchestrates ML-DSA signing and verification on each PQC pipeline. Writes all timing and signature telemetry to the DB.
    - **CryptoKeyService**: Manages per-user key generation, storage, and retrieval.
-   - **AnalyticsService**: Processes latencies, computes rolling SLA compliance percentiles, and exposes security metric heuristics.
+   - **AnalyticsService**: Processes latencies, computes rolling SLA compliance percentiles, exposes security metric heuristics, and provides the signature health comparison endpoint.
    - **HarvestService**: Converts logical mathematical endpoints into executable IBM Qiskit Quantum instructions.
    - **NotificationService / EventBus**: Maintains real-time SSE push streams and updates the server dashboard internally.
 4. **Data Persistence**
@@ -153,8 +160,7 @@ be_project_2/
 ├── docs/                     # Project documentation
 │   ├── Project_Specifications.md
 │   ├── Working.md
-│   ├── DEPLOYMENT.md
-│   └── planning/             # Pre-flight architecture notes
+│   └── DEPLOYMENT.md
 │
 ├── logs/                     # Generated runtime logs (pytest.log, etc.)
 ├── output/                   # Simulation outputs (e.g. stolen_database.json)

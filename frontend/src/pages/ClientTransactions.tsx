@@ -14,6 +14,8 @@ interface Transaction {
   amount: number;
   sender: string;
   receiver: string;
+  sender_username: string;
+  receiver_username: string;
   crypto_method: string;
   total_time_ms: number;
 }
@@ -198,11 +200,15 @@ export default function ClientTransactions() {
                     <tr><td colSpan={5} style={{textAlign:'center', padding:'2rem', color:'var(--text-muted)'}}>No recent transactions found.</td></tr>
                   ) : history.map(tx => {
                     const isOutgoing = tx.sender === myAccount || tx.sender === user.username;
+                    // Use resolved username, fall back to raw account number for older rows
+                    const counterparty = isOutgoing
+                      ? (tx.receiver_username || tx.receiver)
+                      : (tx.sender_username  || tx.sender);
                     return (
                       <tr key={tx.id}>
                         <td>{new Date(tx.timestamp).toLocaleTimeString()}</td>
                         <td style={{ color: isOutgoing ? '#f87171' : '#34d399' }}>{isOutgoing ? 'OUT' : 'IN'}</td>
-                        <td>{isOutgoing ? tx.receiver : tx.sender}</td>
+                        <td>{counterparty}</td>
                         <td style={{ color: isOutgoing ? '#f87171' : '#34d399', fontWeight:'bold' }}>${tx.amount.toFixed(2)}</td>
                         <td><span className="status-badge" style={{background: 'rgba(52, 211, 153, 0.2)', color: 'var(--accent-green)'}}>COMPLETE</span></td>
                       </tr>

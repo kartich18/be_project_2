@@ -125,8 +125,12 @@ def run_pqc_benchmark(
     decapsulate_times = []
     decrypt_times = []
     total_times = []
+    dsa_keygen_times = []
+    sign_times = []
+    verify_times = []
 
     key_sizes = {}
+    dsa_sizes = {}
 
     for i in range(iterations):
         result = pqc_mod.encrypt_transaction(payload, algorithm=algorithm)
@@ -136,12 +140,20 @@ def run_pqc_benchmark(
         decapsulate_times.append(result["decapsulate_ms"])
         decrypt_times.append(result["decrypt_ms"])
         total_times.append(result["total_ms"])
+        dsa_keygen_times.append(result["dsa_keygen_ms"])
+        sign_times.append(result["sign_ms"])
+        verify_times.append(result["verify_ms"])
 
         if i == 0:
             key_sizes = {
                 "public_key_bytes": result["public_key_bytes"],
                 "secret_key_bytes": result["secret_key_bytes"],
                 "ciphertext_bytes": result["ciphertext_bytes"],
+            }
+            dsa_sizes = {
+                "dsa_algorithm":        result["dsa_algorithm"],
+                "dsa_public_key_bytes": result["dsa_public_key_bytes"],
+                "signature_bytes":      result["signature_bytes"],
             }
 
     logger.info(
@@ -158,8 +170,12 @@ def run_pqc_benchmark(
         "encrypt": _compute_stats(encrypt_times),
         "decapsulate": _compute_stats(decapsulate_times),
         "decrypt": _compute_stats(decrypt_times),
+        "dsa_keygen": _compute_stats(dsa_keygen_times),
+        "sign": _compute_stats(sign_times),
+        "verify": _compute_stats(verify_times),
         "total": _compute_stats(total_times),
         "key_sizes": key_sizes,
+        "dsa_sizes": dsa_sizes,
     }
 
 

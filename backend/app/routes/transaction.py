@@ -65,31 +65,62 @@ def create_transaction():
 @transaction_bp.route("/transactions/history", methods=["GET"])
 @token_required
 def get_transaction_history():
-    """Returns past transactions solely involving the authenticated user."""
+    """Returns past transactions solely involving the authenticated user.
+    
+    Each transaction dict is enriched with sender_username and
+    receiver_username resolved by joining Account → User, so the
+    frontend can display names instead of raw account numbers.
+    """
     user_id = get_jwt_identity()
     user = db.session.get(User, int(user_id))
     if not user:
         return jsonify({"error": "Invalid user"}), 401
-    
-    # We allow filtering by limiting rows or returning all
+
     limit = request.args.get("limit", 100, type=int)
 
-    if user.role == "admin":
-        transactions = db.session.query(Transaction).order_by(Transaction.timestamp.desc()).limit(limit).all()
-        return jsonify({"transactions": [tx.to_dict() for tx in transactions]}), 200
-
     from app.models.account import Account
+
+    # Build account_number → username lookup (one DB query)
+    account_rows = (
+        db.session.query(Account.account_number, User.username)
+        .join(User, Account.user_id == User.id)
+        .all()
+    )
+    acct_to_name: dict[str, str] = {acct: uname for acct, uname in account_rows}
+
+    def _enrich(tx: Transaction) -> dict:
+        """Return to_dict() augmented with resolved usernames."""
+        d = tx.to_dict()
+        d["sender_username"]   = acct_to_name.get(tx.sender,   tx.sender)
+        d["receiver_username"] = acct_to_name.get(tx.receiver, tx.receiver)
+        return d
+
+    if user.role == "admin":
+        transactions = (
+            db.session.query(Transaction)
+            .order_by(Transaction.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        return jsonify({"transactions": [_enrich(tx) for tx in transactions]}), 200
+
     accounts = db.session.query(Account).filter_by(user_id=user.id).all()
     account_ids = [a.account_number for a in accounts]
-    
+
     if not account_ids:
         return jsonify({"transactions": []}), 200
-        
-    transactions = db.session.query(Transaction).filter(
-        db.or_(
-            Transaction.sender.in_(account_ids),
-            Transaction.receiver.in_(account_ids)
-        )
-    ).order_by(Transaction.timestamp.desc()).limit(limit).all()
 
-    return jsonify({"transactions": [tx.to_dict() for tx in transactions]}), 200
+    transactions = (
+        db.session.query(Transaction)
+        .filter(
+            db.or_(
+                Transaction.sender.in_(account_ids),
+                Transaction.receiver.in_(account_ids),
+            )
+        )
+        .order_by(Transaction.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return jsonify({"transactions": [_enrich(tx) for tx in transactions]}), 200

@@ -10,9 +10,10 @@ A **production-grade Proof-of-Concept** evaluating the transition of financial t
 
 | Feature | Description |
 |---|---|
-| **Four-Pipeline Crypto Engine** | Every transaction is processed concurrently via RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024 |
+| **Four-Pipeline Crypto Engine** | Every transaction is processed via RSA-2048, ML-KEM-512, ML-KEM-768, and ML-KEM-1024 |
+| **ML-DSA Digital Signatures** | Every transaction is digitally signed — RSA-PSS on the classical path; ML-DSA-44/65/87 (FIPS 204) on PQC, paired by NIST security level |
 | **Per-User Cryptographic Keys** | Each account gets dedicated ML-KEM + RSA key pairs, encrypted at rest via PBKDF2 |
-| **Role-Based React SPA** | Admin Analytics (global telemetry) and Viewer Transaction Management (personal history + transfers) |
+| **Role-Based React SPA** | Admin Analytics (global telemetry + Signature Health panel) and Viewer Transaction Management (personal history + transfers) |
 | **Two-Token Auth** | Short-lived JWT access tokens (15 min) + long-lived refresh tokens with per-device revocation |
 | **Real-Time SSE Streams** | Live dashboard updates via Server-Sent Events — no polling |
 | **Transaction State Machine** | `INITIATED → VALIDATED → CRYPTO_PROCESSED → COMMITTED → SETTLED` with append-only audit log |
@@ -220,16 +221,22 @@ npm run dev
 | `/api/auth/logout` | `POST` | JWT | Revoke current session |
 | `/api/auth/sessions` | `GET` | JWT | List all active sessions |
 | `/api/auth/sessions/<id>` | `DELETE` | JWT | Revoke a specific session |
-| `/api/transactions` | `POST` | JWT (Viewer) | Submit a new transaction |
-| `/api/transactions` | `GET` | JWT | Fetch transaction history |
-| `/api/analytics/*` | `GET` | JWT (Admin) | Dashboard KPI endpoints |
-| `/api/metrics` | `GET` | JWT | Performance metrics |
-| `/api/stream/global` | `GET` | JWT (Admin) | Global SSE event stream |
-| `/api/stream/user` | `GET` | JWT | Per-user SSE event stream |
+| `/api/transaction` | `POST` | JWT (Viewer) | Submit a new transaction (4 pipelines + signatures) |
+| `/api/transactions/history` | `GET` | JWT | Fetch transaction history (with resolved usernames) |
+| `/api/directory/users` | `GET` | JWT | List all users and their account IDs |
+| `/api/analytics/migration-status` | `GET` | JWT (Admin) | PQC migration progress |
+| `/api/analytics/algorithm-comparison` | `GET` | JWT (Admin) | RSA vs ML-KEM latency comparison |
+| `/api/analytics/security-health` | `GET` | JWT (Admin) | Failure rates and security status |
+| `/api/analytics/anomalies` | `GET` | JWT (Admin) | Detected anomalies |
+| `/api/v1/analytics/signature-health` | `GET` | JWT (Admin) | Digital signature telemetry (RSA-PSS vs ML-DSA) |
+| `/api/metrics` | `GET` | JWT | Aggregated performance metrics |
+| `/api/benchmark` | `GET` | JWT | On-demand crypto benchmark |
+| `/api/stream/transactions` | `GET` | JWT (Admin) | Global SSE transaction stream |
+| `/api/stream/my_transactions` | `GET` | JWT | Per-user SSE transaction stream |
 | `/api/harvest/start` | `POST` | JWT | Trigger Phase 1 (intercept) |
 | `/api/harvest/decrypt` | `POST` | JWT | Trigger Phase 3 (Shor's attack) |
-| `/api/keys` | `GET` | JWT (Admin) | Key rotation health |
-| `/api/accounts` | `GET` | JWT | User account directory |
+| `/api/v1/keys/rotation-health` | `GET` | JWT (Admin) | Key rotation health |
+| `/api/accounts` | `GET` | JWT | User account list |
 | `/api/clients` | `GET` | JWT (Admin) | Connected client registry |
 
 > See [`docs/Working.md`](docs/Working.md) for a detailed usage walkthrough.
@@ -240,20 +247,33 @@ npm run dev
 
 ### Classical Baseline (RSA-2048)
 - **Encryption:** RSA-OAEP with SHA-256
-- **Signing:** RSA-PSS with SHA-256
+- **Signing:** RSA-PSS with SHA-256 — signs the transaction payload on every transaction
 - **Symmetric:** AES-256-GCM (FIPS 197) with HKDF-SHA256 key derivation
 - **Library:** Python `cryptography`
 
-### Post-Quantum Suite (ML-KEM — FIPS 203)
+### Post-Quantum Encryption Suite (ML-KEM — FIPS 203)
 All three NIST security levels run on every transaction:
 
 | Algorithm | Security Level | Library |
 |---|---|---|
-| ML-KEM-512 | Level 1 | `liboqs-python` |
+| ML-KEM-512 | Level 2 | `liboqs-python` |
 | ML-KEM-768 | Level 3 | `liboqs-python` |
 | ML-KEM-1024 | Level 5 | `liboqs-python` |
 
 **Workflow:** `keygen → encapsulate → shared secret → AES-256-GCM encrypt payload`
+
+### Post-Quantum Digital Signatures (ML-DSA — FIPS 204)
+Every PQC transaction is also digitally signed. Each ML-KEM level is paired with the ML-DSA variant at the matching NIST security level (Option B — paired levels):
+
+| KEM Pipeline | DSA Algorithm | NIST Level |
+|---|---|---|
+| ML-KEM-512 | **ML-DSA-44** | Level 2 |
+| ML-KEM-768 | **ML-DSA-65** | Level 3 |
+| ML-KEM-1024 | **ML-DSA-87** | Level 5 |
+
+**Workflow:** `DSA keygen → sign(plaintext) → [KEM decrypt] → verify(signature)` — `dsa_verified` field stored per transaction row.
+
+Sign/verify timing, signature size, and DSA public key size are exposed via `GET /api/v1/analytics/signature-health` and visualized in the Admin Dashboard **Digital Signature Health** panel.
 
 ### Quantum Simulation (Shor's Algorithm)
 - **Library:** Qiskit (IBM Quantum SDK)
@@ -267,7 +287,8 @@ All three NIST security levels run on every transaction:
 - **No plaintext private keys at rest** — private keys encrypted via PBKDF2 derived from user credentials; decrypted only within a single request lifetime.
 - **Two-token session pattern** — access tokens expire in 15 minutes; refresh tokens are stored server-side and can be revoked per-device.
 - **Append-only audit log** — every transaction state transition writes an immutable record (algorithm, key ID, timing) to the `audit_log` table.
-- **Strict data siloing** — Viewers can only query their own transactions; Admins access global telemetry. Enforced server-side.
+- **Digital signature on every transaction** — RSA-PSS (classical) and ML-DSA (PQC) sign each transaction payload; `dsa_verified` is stored in the DB and failure gates the SETTLED status.
+- **Strict data siloing** — Viewers can only query their own transactions and see resolved usernames; Admins access global telemetry. Enforced server-side.
 
 ---
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Chart,
   LineElement, BarElement, PointElement, CategoryScale, LinearScale,
@@ -17,11 +17,13 @@ Chart.defaults.font.family = "'Inter', sans-serif";
 // ── Types ────────────────────────────────────────────────────────────────────
 interface TxRecord {
   id: number; timestamp: string; amount: number; sender: string;
-  receiver: string; crypto_method: string; key_gen_time_ms: number;
+  receiver: string; sender_username: string; receiver_username: string;
+  crypto_method: string; key_gen_time_ms: number;
   encapsulate_time_ms: number | null; encrypt_time_ms: number;
   decapsulate_time_ms: number | null; decrypt_time_ms: number;
   total_time_ms: number; key_size_bytes: number; secret_key_bytes: number | null;
   ciphertext_size_bytes: number; status: string;
+  sign_time_ms: number | null; verify_time_ms: number | null;
 }
 interface TxBundle { classical: TxRecord; pqc_512?: TxRecord; pqc_768?: TxRecord; pqc_1024?: TxRecord; }
 interface MetricsGroup {
@@ -32,6 +34,18 @@ interface MetricsGroup {
 }
 interface Metrics { classical?: MetricsGroup; pqc_512?: MetricsGroup; pqc_768?: MetricsGroup; pqc_1024?: MetricsGroup; }
 interface ClientInfo { client_id: string; port: number; status: string; last_seen: string | null; }
+interface SigStats {
+  algorithm: string; avg_sign_ms: number; avg_verify_ms: number;
+  dsa_public_key_bytes: number | null; signature_size_bytes: number | null;
+  verified_pct: number; sample_count: number;
+}
+interface SigHealth {
+  classical: SigStats | null; pqc_512: SigStats | null;
+  pqc_768: SigStats | null; pqc_1024: SigStats | null;
+  summary: { verdict: string; pqc_is_quantum_safe: boolean;
+             classical_standard: string; pqc_standard: string;
+             security_pairing: string; } | null;
+}
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -97,6 +111,10 @@ export default function AdminAnalytics() {
   const [breakdown, setBreakdown]     = useState<{ encap512: string; decap512: string; encap768: string; decap768: string; encap1024: string; decap1024: string }>({ encap512:'--',decap512:'--',encap768:'--',decap768:'--',encap1024:'--',decap1024:'--' });
   const [ratios, setRatios]     = useState({ rsa:0, r512:0, r768:0, r1024:0,  max:1 });
   const [footprints, setFp]     = useState({ rsa:0, f512:0, f768:0, f1024:0,  max:1 });
+  const [sigHealth, setSigHealth] = useState<SigHealth | null>(null);
+  // Real account pairs fetched for the load generator
+  const [demoAccounts, setDemoAccounts] = useState<{ from: string; to: string }[]>([]);
+  const demoIdx = useRef(0);
 
   // Chart data refs (mutable, no re-render on chart update)
   const latLabels  = useRef<string[]>([]);
@@ -270,6 +288,30 @@ export default function AdminAnalytics() {
     } catch { /* silent */ }
   }, []);
 
+  const fetchSigHealth = useCallback(async () => {
+    try {
+      const res = await api.get<SigHealth>('/v1/analytics/signature-health');
+      setSigHealth(res.data);
+    } catch { /* silent */ }
+  }, []);
+
+  // Fetch real account pairs for load generator demo traffic
+  const fetchDemoAccounts = useCallback(async () => {
+    try {
+      const res = await api.get<{ users: { username: string; account_id: string }[] }>('/directory/users');
+      const users = res.data.users ?? [];
+      if (users.length < 2) return;
+      // Build every ordered pair (a→b, b→a) so traffic flows both ways
+      const pairs: { from: string; to: string }[] = [];
+      for (let i = 0; i < users.length; i++) {
+        for (let j = 0; j < users.length; j++) {
+          if (i !== j) pairs.push({ from: users[i].account_id, to: users[j].account_id });
+        }
+      }
+      setDemoAccounts(pairs);
+    } catch { /* silent */ }
+  }, []);
+
   const fetchTxHistory = useCallback(async () => {
     try {
       // Fetch more rows so we can reconstruct ~30 bundles (120 / 4)
@@ -329,23 +371,33 @@ export default function AdminAnalytics() {
     fetchAdvanced(analyticsWindow);
     fetchClients();
     fetchTxHistory();
+    fetchSigHealth();
+    fetchDemoAccounts();
     const t1 = setInterval(fetchMetrics, 5000);
     const t2 = setInterval(() => fetchAdvanced(analyticsWindow), 10000);
     const t3 = setInterval(fetchClients, 10000);
-    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); };
-  }, [fetchMetrics, fetchAdvanced, fetchClients, fetchTxHistory, analyticsWindow]);
+    const t4 = setInterval(fetchSigHealth, 10000);
+    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); clearInterval(t4); };
+  }, [fetchMetrics, fetchAdvanced, fetchClients, fetchTxHistory, fetchSigHealth, fetchDemoAccounts, analyticsWindow]);
 
   // ── Load generator ────────────────────────────────────────────────────────
   const loadInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   function toggleLoad() {
     if (!loadRunning) {
+      if (demoAccounts.length < 2) {
+        setLoadMsg('⚠ No accounts found — create at least 2 users to run demo load.');
+        return;
+      }
       setLoadRunning(true);
       setLoadMsg('Generating synthetic traffic...');
       loadInterval.current = setInterval(async () => {
         try {
+          // Cycle through real account pairs so backend never receives fake IDs
+          const pair = demoAccounts[demoIdx.current % demoAccounts.length];
+          demoIdx.current += 1;
           const res = await api.post('/transaction', {
-            account_id_from: `DEMO-${Math.floor(Math.random() * 1000)}`,
-            account_id_to:   `DEMO-${Math.floor(Math.random() * 1000)}`,
+            account_id_from: pair.from,
+            account_id_to:   pair.to,
             amount:          parseFloat((Math.random() * 1000).toFixed(2)),
           });
           pushToChart(res.data);
@@ -551,6 +603,84 @@ export default function AdminAnalytics() {
           </div>
         </section>
 
+        {/* ── Digital Signature Health ── */}
+        <section className="card glass-card advanced-section">
+          <h2>🔏 Digital Signature Health</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 16 }}>
+            Every transaction is digitally signed. Classical path uses <strong>RSA-PSS / SHA-256</strong>;
+            PQC path uses <strong>ML-DSA (FIPS 204 / Dilithium)</strong> paired by security level.
+          </p>
+
+          {/* Algorithm cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
+            {([
+              { key: 'classical',  label: 'RSA-PSS',    sub: 'Classical · FIPS 186-5',   badge: 'method-rsa',      quantum: false },
+              { key: 'pqc_512',   label: 'ML-DSA-44',  sub: 'PQC Level 2 · FIPS 204',   badge: 'method-pqc-512',  quantum: true  },
+              { key: 'pqc_768',   label: 'ML-DSA-65',  sub: 'PQC Level 3 · FIPS 204',   badge: 'method-pqc-768',  quantum: true  },
+              { key: 'pqc_1024',  label: 'ML-DSA-87',  sub: 'PQC Level 5 · FIPS 204',   badge: 'method-pqc-1024', quantum: true  },
+            ] as const).map(({ key, label, sub, badge, quantum }) => {
+              const s = sigHealth?.[key] as SigStats | null | undefined;
+              return (
+                <div key={key} className="kpi-card-adv" style={{ position: 'relative' }}>
+                  <span className={`method-badge ${badge}`} style={{ marginBottom: 8, display: 'inline-block' }}>{label}</span>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: 12 }}>{sub}</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Avg Sign</span>
+                      <strong>{s ? `${s.avg_sign_ms.toFixed(4)} ms` : '—'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Avg Verify</span>
+                      <strong>{s ? `${s.avg_verify_ms.toFixed(4)} ms` : '—'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Sig Size</span>
+                      <strong>{s?.signature_size_bytes != null ? `${s.signature_size_bytes} B` : '—'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Pub Key</span>
+                      <strong>{s?.dsa_public_key_bytes != null ? `${s.dsa_public_key_bytes} B` : '—'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Verified</span>
+                      <strong style={{ color: (s?.verified_pct ?? 0) >= 99.9 ? 'var(--accent-green)' : '#f87171' }}>
+                        {s ? `${s.verified_pct}%` : '—'}
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Quantum Safe</span>
+                      <strong>{quantum ? '✅ Yes' : '❌ No'}</strong>
+                    </div>
+                  </div>
+                  {s && (
+                    <div style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Based on {s.sample_count} transaction{s.sample_count !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Summary verdict */}
+          {sigHealth?.summary && (
+            <div style={{
+              background: 'rgba(45,212,191,0.06)', border: '1px solid rgba(45,212,191,0.2)',
+              borderRadius: 10, padding: '14px 18px', fontSize: '0.87rem',
+              color: 'var(--text-secondary)', lineHeight: 1.6,
+            }}>
+              <strong style={{ color: 'var(--accent-color)', display: 'block', marginBottom: 6 }}>
+                📊 Verdict
+              </strong>
+              {sigHealth.summary.verdict}
+              <div style={{ marginTop: 10, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                <strong>Standards:</strong> {sigHealth.summary.classical_standard} vs {sigHealth.summary.pqc_standard}<br />
+                <strong>Security pairing:</strong> {sigHealth.summary.security_pairing}
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* ── Recent Transactions ── */}
         <section className="card glass-card history-section-wide">
           <h2>Recent Transactions</h2>
@@ -562,6 +692,7 @@ export default function AdminAnalytics() {
                   <th>Amount</th><th>Method</th>
                   <th>Key Gen (ms)</th><th>Encap (ms)</th><th>Encrypt (ms)</th>
                   <th>Decap (ms)</th><th>Decrypt (ms)</th><th>Total (ms)</th>
+                  <th>Sign (ms)</th><th>Verify (ms)</th>
                   <th>Key Material (B)</th><th>Cipher Size (B)</th>
                 </tr>
               </thead>
@@ -573,7 +704,7 @@ export default function AdminAnalytics() {
                       style={{ borderBottom: tx.crypto_method === 'ML-KEM-1024' ? '2px solid rgba(48,54,61,0.8)' : undefined }}>
                       <td>#{tx.id}</td>
                       <td>{new Date(tx.timestamp).toLocaleTimeString()}</td>
-                      <td>{tx.sender} → {tx.receiver}</td>
+                      <td>{(tx.sender_username || tx.sender)} → {(tx.receiver_username || tx.receiver)}</td>
                       <td style={{ color:'var(--accent-green)' }}>${tx.amount.toFixed(2)}</td>
                       <td><span className={`method-badge ${methodBadgeClass(tx.crypto_method)}`}>{tx.crypto_method}</span></td>
                       <td>{tx.key_gen_time_ms.toFixed(4)}</td>
@@ -582,6 +713,8 @@ export default function AdminAnalytics() {
                       <td>{tx.decapsulate_time_ms != null ? tx.decapsulate_time_ms.toFixed(4) : '—'}</td>
                       <td>{tx.decrypt_time_ms.toFixed(4)}</td>
                       <td><strong>{tx.total_time_ms.toFixed(4)}</strong></td>
+                      <td style={{ color: 'var(--accent-color)' }}>{tx.sign_time_ms != null ? tx.sign_time_ms.toFixed(4) : '—'}</td>
+                      <td style={{ color: 'var(--accent-color)' }}>{tx.verify_time_ms != null ? tx.verify_time_ms.toFixed(4) : '—'}</td>
                       <td>{km}</td>
                       <td>{tx.ciphertext_size_bytes}</td>
                     </tr>
