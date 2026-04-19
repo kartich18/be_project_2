@@ -4,6 +4,17 @@ Central configuration for the Quantum-Safe Banking Transaction PoC.
 import os
 import socket
 from datetime import timedelta
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Load .env automatically — supports both plain KEY=VAL and export KEY=VAL
+# ---------------------------------------------------------------------------
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path=_env_path, override=False)
+except ImportError:
+    pass  # python-dotenv not installed; rely on env being pre-sourced
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
