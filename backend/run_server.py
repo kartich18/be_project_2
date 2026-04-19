@@ -11,6 +11,11 @@ import argparse
 import os
 import socket
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env before other imports
+load_dotenv()
+
 from app import create_app
 
 

@@ -7,12 +7,14 @@ from flask_jwt_extended import JWTManager, verify_jwt_in_request
 from flask_sqlalchemy import SQLAlchemy
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_migrate import Migrate
 
 from config import get_config
 
 db  = SQLAlchemy()
 jwt = JWTManager()
 limiter = Limiter(key_func=get_remote_address)
+migrate = Migrate()
 
 
 def create_app(config_class=None):
@@ -32,6 +34,7 @@ def create_app(config_class=None):
     db.init_app(app)
     jwt.init_app(app)
     limiter.init_app(app)
+    migrate.init_app(app, db)
 
     from app.routes.auth import auth_bp
     from app.routes.transaction import transaction_bp
